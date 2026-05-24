@@ -37,7 +37,7 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	origPath := r.URL.Path
 	path := stripPrefix(d.cfg.URLPrefix, r.URL.Path)
 	if d.cfg.URLPrefix != "" && d.cfg.URLPrefix != "/" && origPath == path {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
 	if path != origPath {

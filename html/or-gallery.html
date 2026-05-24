@@ -6,6 +6,7 @@
   <title>Gallery</title>
   <link rel="stylesheet" href="or-gallery.css">
   <script defer src="libs/alpinejs.min.js"></script>
+  <script defer src="libs/tailwindcss.js"></script>
 </head>
 <body>
 <div id="app" x-data="gallery" @keydown.window="onKeydown($event)">
@@ -64,11 +65,12 @@
       <button class="btn" @click="readerBack" title="返回 (B/Esc)">←</button>
       <button class="btn" :class="{ active: readerDouble }" x-text="readerDouble ? '双页' : '单页'" @click="readerToggle('double')" title="单/双页">单页</button>
       <button class="btn" :class="{ active: readerRtl }" x-text="readerRtl ? '←RTL' : 'LTR→'" @click="readerToggle('rtl')" title="翻页方向">LTR→</button>
-      <button class="btn" :class="{ active: readerViewMode === 'orig' }" x-text="readerViewMode === 'orig' ? 'Orig' : 'Fit'" @click="readerCycleView" title="视图模式 (O)">Fit</button>
+      <button class="btn" :class="{ active: readerViewMode !== 'scroll' && readerViewMode !== 'thumb' && readerViewMode !== 'rotate' }" @click="readerSwitchFit" title="Fit 模式">Fit</button>
       <button class="btn" :class="{ active: readerViewMode === 'thumb' }" @click="readerToggleThumb" title="缩略图 (T)">📷</button>
       <button class="btn" :class="{ active: readerViewMode === 'rotate' }" @click="readerToggleRotate" title="旋转 (V)">🔄</button>
+      <button class="btn" :class="{ active: readerScrollActive }" @click="readerToggleScroll" title="连续滚动 (M)">📜</button>
       <button class="btn" @click="readerResizeShow = !readerResizeShow" title="图片缩放设置">📐</button>
-      <span x-text="readerPageInfo" style="color:#ccc;font-size:12px;flex:1;text-align:center;white-space:nowrap;overflow:hidden"></span>
+      <span x-text="readerPageInfo" class="text-[#ccc] text-xs flex-1 text-center whitespace-nowrap overflow-hidden"></span>
       <button class="btn" :class="{ active: readerIsFs }" @click="readerToggleFs" title="全屏 (F)">⛶</button>
       <button class="btn" @click="readerEdit" title="在编辑器中打开 (E)">✏️ Editor</button>
       <button class="btn" @click="readerSeq" title="导出序列 (S)">📤 导出序列</button>
@@ -76,39 +78,39 @@
       <button class="btn danger" x-show="readerViewMode !== 'thumb'" @click="readerDelete" title="删除当前图 (Del)">🗑</button>
     </div>
     <div id="reader-resize-modal" x-show="readerResizeShow" @click.self="readerResizeShow = false"
-         style="position:absolute;inset:0;z-index:300;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center">
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;min-width:260px;display:flex;flex-direction:column;gap:10px">
-        <h3 style="margin:0;font-size:14px;display:flex;justify-content:space-between;align-items:center">
+         class="absolute inset-0 z-[300] bg-black/60 flex items-center justify-center">
+      <div class="bg-[var(--bg2)] border border-[var(--border)] rounded-lg p-4 flex flex-col gap-2.5 min-w-[260px]">
+        <h3 class="m-0 text-sm flex justify-between items-center">
           图片缩放
-          <button class="btn" @click="readerResizeShow = false" style="height:24px;min-width:24px;padding:0;font-size:14px">✕</button>
+          <button class="btn !h-6 !min-w-[24px] !p-0 !text-sm" @click="readerResizeShow = false">✕</button>
         </h3>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2)">
+        <label class="flex items-center gap-2 cursor-pointer text-[13px] text-[var(--text2)]">
           <input type="checkbox" x-model="readerResizeEnabled"> 启用缩放
         </label>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <div style="display:flex;gap:8px;align-items:center">
-            <span style="color:var(--text2);min-width:72px;font-size:12px">max-width</span>
-            <input type="number" min="1" x-model.number="readerResizeW" :disabled="!readerResizeEnabled" class="gz-input" style="flex:1;height:28px">
+        <div class="flex flex-col gap-2">
+          <div class="flex gap-2 items-center">
+            <span class="text-[var(--text2)] w-[72px] text-xs">max-width</span>
+            <input type="number" min="1" x-model.number="readerResizeW" :disabled="!readerResizeEnabled" class="gz-input flex-1 !h-7">
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span style="color:var(--text2);min-width:72px;font-size:12px">max-height</span>
-            <input type="number" min="1" x-model.number="readerResizeH" :disabled="!readerResizeEnabled" class="gz-input" style="flex:1;height:28px">
+          <div class="flex gap-2 items-center">
+            <span class="text-[var(--text2)] w-[72px] text-xs">max-height</span>
+            <input type="number" min="1" x-model.number="readerResizeH" :disabled="!readerResizeEnabled" class="gz-input flex-1 !h-7">
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span style="color:var(--text2);min-width:72px;font-size:12px">fit</span>
-            <select x-model="readerResizeFit" :disabled="!readerResizeEnabled" class="gz-input" style="flex:1;height:28px;padding:0 4px;font-size:12px">
+          <div class="flex gap-2 items-center">
+            <span class="text-[var(--text2)] w-[72px] text-xs">fit</span>
+            <select x-model="readerResizeFit" :disabled="!readerResizeEnabled" class="gz-input flex-1 !h-7 !px-1 !text-xs">
               <option value="contain">contain</option>
               <option value="cover">cover</option>
               <option value="fill">fill</option>
               <option value="crop">crop</option>
             </select>
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span style="color:var(--text2);min-width:72px;font-size:12px">quality</span>
-            <input type="number" min="1" max="100" x-model.number="readerResizeQ" :disabled="!readerResizeEnabled" class="gz-input" style="flex:1;height:28px">
+          <div class="flex gap-2 items-center">
+            <span class="text-[var(--text2)] w-[72px] text-xs">quality</span>
+            <input type="number" min="1" max="100" x-model.number="readerResizeQ" :disabled="!readerResizeEnabled" class="gz-input flex-1 !h-7">
           </div>
         </div>
-        <button class="btn" @click="readerSaveResize; readerResizeShow = false" style="height:32px;font-size:13px">应用</button>
+        <button class="btn !h-8 !text-[13px]" @click="readerSaveResize; readerResizeShow = false">应用</button>
       </div>
     </div>
     <div id="page-canvas">
@@ -123,7 +125,7 @@
 <div id="gallerize-modal" :class="{ show: gzModal }" @click.self="gzClose">
   <div id="gallerize-box">
     <h3>✨ Gallerize
-      <button class="modal-close" @click="gzClose" :style="{ pointerEvents: gzRunning ? 'none' : '' }">✕</button>
+      <button class="modal-close" @click="gzClose" :class="{ 'pointer-events-none': gzRunning }">✕</button>
     </h3>
 
     <div class="gz-path-row">
@@ -131,7 +133,7 @@
     </div>
 
     <div>
-      <div class="gz-label" style="margin-bottom:6px">执行模式</div>
+      <div class="gz-label mb-1.5">执行模式</div>
       <div class="gz-mode-row">
         <button class="gz-mode-btn" :class="{ active: gzMode === 'local' }" :disabled="gzRunning" @click="gzSetMode('local')">🖥 Local</button>
         <button class="gz-mode-btn" :class="{ active: gzMode === 'remote' }" :disabled="gzRunning" @click="gzSetMode('remote')">🌐 Remote</button>
@@ -146,12 +148,12 @@
 
     <div>
       <div class="gz-label">图片转换参数（可选）</div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
-        <div><div class="gz-label" style="margin-top:0">宽度</div><input class="gz-input" type="number" min="1" x-model.number="gzW" placeholder="2560"></div>
-        <div><div class="gz-label" style="margin-top:0">高度</div><input class="gz-input" type="number" min="1" x-model.number="gzH" placeholder="2560"></div>
+      <div class="grid grid-cols-2 gap-2">
+        <div><div class="gz-label !mt-0">宽度</div><input class="gz-input" type="number" min="1" x-model.number="gzW" placeholder="2560"></div>
+        <div><div class="gz-label !mt-0">高度</div><input class="gz-input" type="number" min="1" x-model.number="gzH" placeholder="2560"></div>
       </div>
-      <div style="margin-top:8px">
-        <select class="gz-input" x-model="gzFit" style="height:auto;padding:6px">
+      <div class="mt-2">
+        <select class="gz-input !h-auto !p-1.5" x-model="gzFit">
           <option value="">保持默认 (contain)</option>
           <option value="contain">contain (包含)</option>
           <option value="cover">cover (覆盖)</option>
@@ -159,8 +161,8 @@
           <option value="crop">crop (裁剪)</option>
         </select>
       </div>
-      <div style="margin-top:8px">
-        <div class="gz-label" style="margin-top:0">质量 (1-100)</div>
+      <div class="mt-2">
+        <div class="gz-label !mt-0">质量 (1-100)</div>
         <input class="gz-input" type="number" min="1" max="100" x-model.number="gzQ" placeholder="90">
       </div>
     </div>
@@ -194,6 +196,11 @@
 
 <script>
 'use strict';
+// Patch fetch to always include Basic Auth credentials
+const _rawFetch = window.fetch;
+window.fetch = function(url, opts = {}) {
+  return _rawFetch(url, { ...opts, credentials: opts.credentials || 'same-origin' });
+};
 
 /* ═══════════════════════════════════════════════════
    HELPERS
@@ -235,9 +242,11 @@ document.addEventListener('alpine:init', () => {
     readerDouble: false,
     readerRtl: false,
     readerViewMode: 'fit',
+    readerScrollActive: false,
     readerPageInfo: '',
     readerToolbarVisible: true,
     readerIsFs: false,
+    isMobile: window.matchMedia('(max-width: 768px), (pointer: coarse)').matches,
     readerResizeEnabled: LS.get('or-reader-resize', '1') !== '0',
     readerResizeW: LS.int('or-reader-w', IMG_DEF.w),
     readerResizeH: LS.int('or-reader-h', IMG_DEF.h),
@@ -263,9 +272,10 @@ document.addEventListener('alpine:init', () => {
 
     readerBack() { Reader.close(); },
     readerToggle(mode) { if (mode === 'double') Reader.toggleDouble(); else Reader.toggleRtl(); },
-    readerCycleView() { Reader.cycleViewMode(); },
+    readerSwitchFit() { Reader.switchFit(); },
     readerToggleThumb() { Reader.toggleThumb(); },
     readerToggleRotate() { Reader.toggleRotate(); },
+    readerToggleScroll() { Reader.toggleScroll(); },
     readerToggleFs() { Reader.toggleFullscreen(); },
     readerEdit() { Reader.openInEditor(); },
     readerSeq() { Reader.openInSequence(); },
@@ -328,9 +338,10 @@ document.addEventListener('alpine:init', () => {
           case 'End': e.preventDefault(); Reader.gotoLast(); break;
           case 'Escape': case 'b': case 'B': Reader.close(); break;
           case 'f': case 'F': Reader.toggleFullscreen(); break;
-          case 'o': case 'O': Reader.cycleViewMode(); break;
+          case 'o': case 'O': Reader.switchFit(); break;
           case 't': case 'T': Reader.toggleThumb(); break;
           case 'v': case 'V': Reader.toggleRotate(); break;
+          case 'm': case 'M': Reader.toggleScroll(); break;
           case 'Delete': Reader.deleteCurrentPage(); break;
           case 'e': case 'E': Reader.openInEditor(); break;
           case 's': case 'S': Reader.openInSequence(); break;
@@ -424,7 +435,7 @@ function zipFileUrl(archivePath, internalPath) {
 /** Build resized reader URL via /img/ for faster loading */
 function buildReaderUrl(rawUrl, viewMode) {
   const g = window._g;
-  if (viewMode === 'orig' || (g && !g.readerResizeEnabled)) return apiUrl(rawUrl);
+  if (g && !g.readerResizeEnabled) return apiUrl(rawUrl);
   if (rawUrl.startsWith(apiUrl('/zip'))) return rawUrl;
   const inner = rawUrl.replace('/webdav', '');
   const w = g ? g.readerResizeW : IMG_DEF.w;
@@ -461,7 +472,7 @@ async function apiLs(path, opts = {}) {
   });
   // Encode path segments to handle special chars like # in directory names
   const url = apiUrl('/api/ls' + encodeFilePath(path.startsWith('/') ? path : '/' + path)) + '?' + params;
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: 'same-origin' });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.message || `HTTP ${res.status}`);
@@ -471,7 +482,7 @@ async function apiLs(path, opts = {}) {
 
 async function apiRm(path) {
   // Encode path segments to handle special chars like # in directory names
-  const res = await fetch(apiUrl('/api/rm' + encodeFilePath(path.startsWith('/') ? path : '/' + path)), { method: 'DELETE' });
+  const res = await fetch(apiUrl('/api/rm' + encodeFilePath(path.startsWith('/') ? path : '/' + path)), { method: 'DELETE', credentials: 'same-origin' });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.message || `HTTP ${res.status}`);
@@ -822,6 +833,7 @@ const Gallerize = {
       method: 'POST',
       headers,
       body: JSON.stringify(bodyObj),
+      credentials: 'same-origin',
       // Long timeout for large galleries
       signal: AbortSignal.timeout ? AbortSignal.timeout(300_000) : undefined,
     });
@@ -1145,10 +1157,10 @@ const GalleryView = {
     window._g.showReader = false;
     document.getElementById('toolbar').style.display = '';
 
-    // Update URL with current page
     Router.updatePage(this._page);
 
-    await this.loadPage();
+    this._showId = (this._showId || 0) + 1;
+    await this.loadPage(this._showId);
   },
 
   /** Save page number for a path */
@@ -1188,21 +1200,24 @@ const GalleryView = {
     this.loadPage();
   },
 
-  async loadPage() {
+  async loadPage(showId) {
     if (this._loading) return;
 
     this._loading = true;
     window._g.loading = true;
+    const loadPath = this._path;
+    const loadPage = this._page;
 
     try {
-      const data = await apiLs(this._path, { page: this._page, page_size: this._pageSize });
+      const data = await apiLs(loadPath, { page: loadPage, page_size: this._pageSize });
+      if (showId && this._showId !== showId) return;
       this._total = data.total;
       this._totalPages = Math.ceil(data.total / this._pageSize);
 
       const items = data.items.filter(it => isDir(it.type) || isZip(it.type));
       const galleryItems = items.map(it => ({
         name: it.name, type: it.type,
-        path: joinPath(this._path, it.name),
+        path: joinPath(loadPath, it.name),
         isZip: isZip(it.type),
         icon: isZip(it.type) ? '🗜️' : '📁',
         sizeLabel: isZip(it.type) ? fmtSize(it.size) : '',
@@ -1339,14 +1354,6 @@ const Reader = {
   // Touch state
   _touch: { startX: 0, startY: 0, startTime: 0 },
 
-  // Drag state (orig mode pan)
-  _drag: { active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0, moved: false },
-
-  // Zoom state (orig mode wheel-to-zoom)
-  _scale: 1.0,
-  _SCALE_MIN: 0.1,
-  _SCALE_MAX: 10,
-
   // ── Image Cache & Preload ───────────────────────────────────────────
   // Cache pool: keeps loaded images in memory for instant switching
   // Uses Map<url, {img: HTMLImageElement, loaded: boolean, loading: boolean}>
@@ -1473,79 +1480,7 @@ const Reader = {
     // Canvas click zone
     this.canvas.addEventListener('click', e => this._handleCanvasClick(e));
 
-    // ── Orig-mode drag-to-pan (mouse on canvas background) ─────────────────
-    this.canvas.addEventListener('mousedown', e => {
-      if (!this.canvas.classList.contains('orig')) return;
-      if (e.button !== 0) return;
-      // Don't start canvas drag if clicking on an image (image has its own handler)
-      if (e.target.closest('.page-img-wrap img')) return;
-      this._drag = { active: true, startX: e.clientX, startY: e.clientY,
-                     scrollLeft: this.canvas.scrollLeft, scrollTop: this.canvas.scrollTop,
-                     moved: false, source: 'canvas' };
-      this.canvas.style.cursor = 'grabbing';
-      e.preventDefault();
-    });
-    document.addEventListener('mousemove', e => {
-      if (!this._drag.active) return;
-      const dx = e.clientX - this._drag.startX;
-      const dy = e.clientY - this._drag.startY;
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) this._drag.moved = true;
-      this.canvas.scrollLeft = this._drag.scrollLeft - dx;
-      this.canvas.scrollTop  = this._drag.scrollTop  - dy;
-    });
-    document.addEventListener('mouseup', () => {
-      if (!this._drag.active) return;
-      this._drag.active = false;
-      if (this.canvas.classList.contains('orig')) this.canvas.style.cursor = 'grab';
-    });
-
-    // ── Orig-mode drag-to-pan (touch, only for canvas background) ─────────
-    // Note: single-touch drag on images is handled in _appendPageImg
-    this.canvas.addEventListener('touchstart', e => {
-      if (!this.canvas.classList.contains('orig') || e.touches.length !== 1) return;
-      // Don't start canvas drag if touching on an image
-      const touch = e.touches[0];
-      const el = document.elementFromPoint(touch.clientX, touch.clientY);
-      if (el && el.closest('.page-img-wrap')) return;
-      this._drag = { active: true, startX: touch.clientX, startY: touch.clientY,
-                     scrollLeft: this.canvas.scrollLeft, scrollTop: this.canvas.scrollTop,
-                     source: 'canvas' };
-    }, { passive: true });
-    this.canvas.addEventListener('touchmove', e => {
-      if (!this._drag.active || e.touches.length !== 1) return;
-      const t = e.touches[0];
-      this.canvas.scrollLeft = this._drag.scrollLeft - (t.clientX - this._drag.startX);
-      this.canvas.scrollTop  = this._drag.scrollTop  - (t.clientY - this._drag.startY);
-    }, { passive: true });
-    this.canvas.addEventListener('touchend', () => { this._drag.active = false; }, { passive: true });
-
-    // ── Orig-mode: wheel-to-zoom (Ctrl/Cmd+Wheel only) ────────────────────
-    // In orig mode, wheel zooms only when Ctrl/Cmd is held.
-    // Without modifier, wheel scrolls the page (native behavior).
-    this.canvas.addEventListener('wheel', e => {
-      if (!this.canvas.classList.contains('orig')) return;
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const delta = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-        const newScale = Math.min(this._SCALE_MAX, Math.max(this._SCALE_MIN, this._scale * delta));
-        if (newScale === this._scale) return;
-
-        const rect = this.canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const wx = (this.canvas.scrollLeft + mx) / this._scale;
-        const wy = (this.canvas.scrollTop  + my) / this._scale;
-
-        this._scale = newScale;
-        this._applyScale();
-
-        this.canvas.scrollLeft = wx * this._scale - mx;
-        this.canvas.scrollTop  = wy * this._scale - my;
-      }
-      // Without Ctrl/Cmd: let native scroll take over (no preventDefault)
-    }, { passive: false });
-
-    // Touch swipe (non-orig)
+    // Touch swipe
     this.el.addEventListener('touchstart', e => this._touchStart(e), { passive: true });
     this.el.addEventListener('touchend', e => this._touchEnd(e), { passive: true });
 
@@ -1566,8 +1501,9 @@ const Reader = {
     this._isZip = isZipPath;
     this._double = Settings.get('doublePages');
     this._rtl = Settings.get('rtl');
-    this._viewMode = Settings.get('viewMode');
-    this._scale = 1.0;   // reset zoom on each open
+    let vm = Settings.get('viewMode');
+    if (vm === 'orig') vm = 'fit';
+    this._viewMode = window._g.isMobile ? 'scroll' : (vm === 'scroll' ? 'fit' : vm);
     this._images = [];
     // Restore saved reader position for this gallery
     const savedIdx = ReaderPosition.get(path);
@@ -1714,16 +1650,11 @@ const Reader = {
   _renderPage(direction = 0) {
     // Clear canvas
     this.canvas.querySelectorAll('.page-img-wrap').forEach(el => el.remove());
-    // Reset classes then apply current state
+    this.canvas.querySelectorAll('.scroll-img-wrap').forEach(el => el.remove());
     this.canvas.className = '';
-    if (this._viewMode === 'orig') {
-      this.canvas.classList.add('orig');
-      this.canvas.style.cursor = 'grab';
-    } else if (this._viewMode === 'thumb') {
+    this.el.classList.remove('scroll-mode');
+    if (this._viewMode === 'thumb') {
       this.canvas.classList.add('thumb');
-      this.canvas.style.cursor = '';
-    } else {
-      this.canvas.style.cursor = '';
     }
     if (this._double) this.canvas.classList.add('double');
     this.canvas.style.flexDirection = this._rtl ? 'row-reverse' : 'row';
@@ -1733,10 +1664,18 @@ const Reader = {
     // making it visually fill the canvas after rotate(90deg).
     if (this._viewMode === 'rotate') this._updateRotateVars();
 
-    // Thumb mode: show all images in a grid
     if (this._viewMode === 'thumb') {
       this._images.forEach((_, idx) => this._appendThumbImg(idx));
       this._updatePageInfo();
+      this._showToolbar(true);
+      return;
+    }
+
+    if (this._viewMode === 'scroll') {
+      this.el.classList.add('scroll-mode');
+      this.el.scrollTop = 0;
+      window._g.readerPageInfo = `${this._images.length} 张`;
+      this._images.forEach((_, idx) => this._appendScrollImg(idx));
       this._showToolbar(true);
       return;
     }
@@ -1748,14 +1687,37 @@ const Reader = {
       this._appendPageImg(idx);
     }
 
-    // Apply zoom if in orig mode (scale persists across page turns)
-    if (this._viewMode === 'orig') this._applyScale();
-
     this._updatePageInfo();
     this._showToolbar(true);
 
     // Smart preload based on direction
     this._smartPreload(direction);
+  },
+
+  _appendScrollImg(idx) {
+    const item = this._images[idx];
+    const readerUrl = this._displayUrl(idx);
+    const wrap = document.createElement('div');
+    wrap.className = 'scroll-img-wrap';
+    wrap.dataset.idx = idx;
+
+    const img = document.createElement('img');
+    img.alt = item.name;
+    img.draggable = false;
+    img.loading = 'lazy';
+    img.src = readerUrl;
+
+    if (window._g.isMobile) {
+      img.addEventListener('click', () => {
+        if (idx + 1 < this._images.length) {
+          const next = this.el.querySelector(`.scroll-img-wrap[data-idx="${idx + 1}"]`);
+          if (next) next.scrollIntoView({ block: 'start', behavior: 'instant' });
+        }
+      });
+    }
+
+    wrap.appendChild(img);
+    this.canvas.appendChild(wrap);
   },
 
   _appendPageImg(idx) {
@@ -1803,55 +1765,10 @@ const Reader = {
       img.src = readerUrl;
     }
 
-    // ── Orig-mode interaction on image ─────────────────────────────
-    if (this._viewMode === 'orig') {
-      // Mouse hover: just moving over the image scrolls it
-      img.addEventListener('mouseenter', e => {
-        if (!this.canvas.classList.contains('orig')) return;
-        // Capture pointer to track movement even if mouse leaves briefly
-        img.setPointerCapture(e.pointerId);
-      });
-
-      img.addEventListener('mousemove', e => {
-        if (!this.canvas.classList.contains('orig')) return;
-        // Scroll canvas based on mouse movement delta
-        this.canvas.scrollLeft += e.movementX;
-        this.canvas.scrollTop += e.movementY;
-      });
-
-      // Wheel: scroll canvas (pan) when hovering over image
-      img.addEventListener('wheel', e => {
-        if (!this.canvas.classList.contains('orig')) return;
-        e.preventDefault();
-        this.canvas.scrollLeft += e.deltaX || e.deltaY;
-      }, { passive: false });
-
-      // Touch drag on image (still needed for touch devices)
-      img.addEventListener('touchstart', e => {
-        if (!this.canvas.classList.contains('orig') || e.touches.length !== 1) return;
-        const t = e.touches[0];
-        this._drag = {
-          active: true,
-          startX: t.clientX,
-          startY: t.clientY,
-          scrollLeft: this.canvas.scrollLeft,
-          scrollTop: this.canvas.scrollTop,
-          source: 'img'
-        };
-      }, { passive: true });
-
-      img.addEventListener('touchmove', e => {
-        if (!this._drag.active || this._drag.source !== 'img' || e.touches.length !== 1) return;
-        const t = e.touches[0];
-        const dx = t.clientX - this._drag.startX;
-        const dy = t.clientY - this._drag.startY;
-        this.canvas.scrollLeft = this._drag.scrollLeft - dx;
-        this.canvas.scrollTop = this._drag.scrollTop - dy;
-      }, { passive: true });
-
-      img.addEventListener('touchend', () => {
-        if (this._drag.source === 'img') this._drag.active = false;
-      }, { passive: true });
+    // ── Mobile: click image → navigate next ──
+    if (window._g.isMobile) {
+      img.style.cursor = 'pointer';
+      img.addEventListener('click', () => { this._showToolbar(true); this.navigate(1); });
     }
 
     wrap.appendChild(img);
@@ -1948,14 +1865,6 @@ const Reader = {
     this.canvas.appendChild(wrap);
   },
 
-  /** Apply current _scale to all orig-mode page wraps */
-  _applyScale() {
-    this.canvas.querySelectorAll('.page-img-wrap.orig').forEach(wrap => {
-      wrap.style.transform = `scale(${this._scale})`;
-      wrap.style.transformOrigin = 'top left';
-    });
-  },
-
   /** Update --canvas-w / --canvas-h CSS vars used by rotate-mode sizing */
   _updateRotateVars() {
     // getBoundingClientRect reflects the actual rendered size after layout
@@ -2012,13 +1921,9 @@ const Reader = {
     this._renderPage(0);
   },
 
-  cycleViewMode() {
-    const modes = ['fit', 'orig', 'thumb'];
-    const next = modes[(modes.indexOf(this._viewMode) + 1) % modes.length];
-    this._viewMode = next;
-    // Reset zoom when entering orig mode
-    if (next === 'orig') this._scale = 1.0;
-    Settings.set('viewMode', next);
+  switchFit() {
+    this._viewMode = 'fit';
+    Settings.set('viewMode', 'fit');
     this._syncButtons();
     this._renderPage(0);
   },
@@ -2036,6 +1941,14 @@ const Reader = {
 
   toggleRotate() {
     const newMode = this._viewMode === 'rotate' ? 'fit' : 'rotate';
+    this._viewMode = newMode;
+    Settings.set('viewMode', newMode);
+    this._syncButtons();
+    this._renderPage(0);
+  },
+
+  toggleScroll() {
+    const newMode = this._viewMode === 'scroll' ? 'fit' : 'scroll';
     this._viewMode = newMode;
     Settings.set('viewMode', newMode);
     this._syncButtons();
@@ -2098,6 +2011,7 @@ const Reader = {
     window._g.readerDouble = this._double;
     window._g.readerRtl = this._rtl;
     window._g.readerViewMode = this._viewMode;
+    window._g.readerScrollActive = this._viewMode === 'scroll';
   },
 
   _showToolbar(force = false) {
@@ -2117,10 +2031,8 @@ const Reader = {
   },
 
   _handleCanvasClick(e) {
+    if (this._viewMode === 'scroll') return;
     if (e.target.closest('#reader-toolbar')) return;
-    // If user just panned in orig mode, don't treat mouseup as a navigation click
-    if (this._drag.moved) { this._drag.moved = false; return; }
-    // Also ignore clicks that started on an image (they have their own drag handler)
     if (e.target.closest('.page-img-wrap img')) return;
     const rect = this.el.getBoundingClientRect();
     const x = e.clientX - rect.left;
