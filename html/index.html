@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>imgproxy_plus</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3347;--text:#e8eaf0;--text2:#8b90a0;--accent:#6c8aff;--accent2:#a07cff}
+body{background:var(--bg);color:var(--text);font-family:Inter,Noto Sans SC,-apple-system,sans-serif;min-height:100vh}
+nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between}
+nav h1{font-size:18px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+nav span{font-size:12px;color:var(--text2)}
+.hero{padding:80px 24px 48px;text-align:center}
+.hero h2{font-size:36px;font-weight:700;margin-bottom:12px}
+.hero p{font-size:16px;color:var(--text2);max-width:500px;margin:0 auto 32px;line-height:1.7}
+.cards{padding:0 24px 60px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;max-width:1000px;margin:0 auto}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px;cursor:pointer;text-decoration:none;color:inherit;transition:all .25s;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;inset:0;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));opacity:0;transition:opacity .25s}
+.card:hover{transform:translateY(-6px);box-shadow:0 20px 50px rgba(108,138,255,.2);border-color:var(--accent)}
+.card:hover::before{opacity:.04}
+.card .c-icon{font-size:42px;margin-bottom:18px;display:block;transition:transform .25s}
+.card:hover .c-icon{transform:scale(1.1)}
+.card h3{font-size:18px;font-weight:600;margin-bottom:10px}
+.card p{font-size:14px;color:var(--text2);line-height:1.7}
+.card .tag{display:inline-block;margin-top:14px;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;background:rgba(108,138,255,.1);color:var(--accent);border:1px solid rgba(108,138,255,.2)}
+footer{padding:24px;text-align:center;font-size:12px;color:var(--text2);border-top:1px solid var(--border)}
+footer a{color:var(--accent);text-decoration:none}
+@media(max-width:640px){.hero{padding:48px 16px 32px}.hero h2{font-size:24px}.cards{padding:0 16px 32px}}
+</style>
+</head>
+<body>
+<nav>
+<h1>imgproxy_plus</h1>
+<span>基于 imgproxy 的一站式图片与文件服务</span>
+</nav>
+<section class="hero">
+<h2>图片处理 · 文件管理 · 画廊阅读</h2>
+<p>高性能图片处理引擎 | WebDAV 文件访问 | ZIP 透明浏览 | 漫画阅读器 | 批量处理工具</p>
+</section>
+<div class="cards">
+<a class="card" href="./or-gallery">
+<span class="c-icon">🖼️</span>
+<h3>Gallery 画廊</h3>
+<p>浏览图片和漫画收藏，支持目录和ZIP/CBZ直接阅读。内置漫画阅读器，单双页模式、触屏翻页、全屏阅读。</p>
+<span class="tag">画廊 / 阅读器</span>
+</a>
+<a class="card" href="./img-editor">
+<span class="c-icon">✂️</span>
+<h3>图片编辑器</h3>
+<p>裁切、缩放、旋转、翻转图片。支持PDF渲染与导出、网格分割为多块、多图合并为PDF。</p>
+<span class="tag">编辑器 / PDF</span>
+</a>
+<a class="card" href="./img-sequence">
+<span class="c-icon">📑</span>
+<h3>图片序列编辑器</h3>
+<p>多张图片拖拽排序，单张旋转。导出为 PDF 文档、ZIP 压缩包或 CBZ 漫画包。</p>
+<span class="tag">序列 / 导出</span>
+</a>
+</div>
+<footer>
+<p>Powered by <a href="https://imgproxy.net" target="_blank">imgproxy</a> · 高性能图片处理引擎</p>
+</footer>
+</body>
+</html>

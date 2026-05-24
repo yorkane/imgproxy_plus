@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-
+.codebuddy/
 # Test binary, built with `go test -c`
 *.test
 
@@ -16,7 +16,7 @@
 coverage.*
 *.coverprofile
 profile.cov
-
+/imgproxy_plus
 # Dependency directories (remove the comment below to include it)
 # vendor/
 

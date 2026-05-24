@@ -1,0 +1,2817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gallery</title>
+<style>
+/* ─── Reset & Base ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #111;
+  --bg2: #1a1a1a;
+  --bg3: #242424;
+  --border: #333;
+  --text: #e8e8e8;
+  --text2: #999;
+  --accent: #7eb8f7;
+  --danger: #e05252;
+  --radius: 8px;
+  --toolbar-h: 52px;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; overflow: hidden; }
+
+/* ─── Scrollable container ─── */
+#app { height: 100%; display: flex; flex-direction: column; }
+
+/* ─── Toolbar ─── */
+#toolbar {
+  height: var(--toolbar-h);
+  min-height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  flex-shrink: 0;
+  user-select: none;
+  opacity: 0.2;
+  transition: opacity .2s;
+}
+#toolbar:hover { opacity: 1; }
+#toolbar .btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; min-width: 32px; padding: 0 8px;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text); cursor: pointer;
+  font-size: 14px; white-space: nowrap; transition: background .15s;
+}
+#toolbar .btn:hover { background: #333; }
+#toolbar .btn.active { background: var(--accent); color: #111; border-color: var(--accent); }
+#toolbar .btn.danger { border-color: var(--danger); color: var(--danger); }
+#toolbar .btn.danger:hover { background: var(--danger); color: #fff; }
+#toolbar .spacer { flex: 1; }
+#toolbar .breadcrumb {
+  flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  color: var(--text2); font-size: 13px; direction: rtl; text-align: left;
+}
+#toolbar .breadcrumb span { direction: ltr; unicode-bidi: bidi-override; }
+#toolbar .page-info { color: var(--text2); font-size: 13px; white-space: nowrap; }
+
+/* ─── Gallery View ─── */
+#gallery-view {
+  flex: 1; overflow-y: auto; padding: 12px;
+}
+#gallery-view.hidden { display: none; }
+#status-msg.hidden { display: none; }
+#gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  #gallery-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  #gallery-view { padding: 8px; }
+}
+@media (min-width: 768px) {
+  #gallery-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+}
+@media (min-width: 1200px) {
+  #gallery-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+}
+
+.card {
+  position: relative; cursor: pointer; border-radius: var(--radius);
+  overflow: hidden; background: var(--bg3); border: 1px solid var(--border);
+  transition: transform .15s, box-shadow .15s;
+  touch-action: manipulation;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+.card:active { transform: scale(.97); }
+.card .thumb-wrap {
+  position: relative; width: 100%; padding-bottom: 140%; /* 5:7 ratio */
+  background: var(--bg2); overflow: hidden;
+}
+.card .thumb-wrap img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; transition: opacity .3s;
+}
+.card .thumb-wrap img.loading { opacity: 0; }
+.card .thumb-wrap .placeholder {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; font-size: 36px; color: var(--text2);
+}
+.card .card-info {
+  padding: 6px 8px 8px;
+}
+.card .card-name {
+  font-size: 12px; line-height: 1.4;
+  overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  word-break: break-all;
+}
+.card .card-meta {
+  margin-top: 3px; font-size: 11px; color: var(--text2);
+}
+.card .del-btn {
+  position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; cursor: pointer; opacity: 0; transition: opacity .15s;
+  z-index: 2;
+}
+.card:hover .del-btn { opacity: 1; }
+#gallery-grid.del-mode .del-btn { opacity: 1; }
+
+/* ─── Keyboard focus ring ─── */
+.card.kb-focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.5), 0 0 0 3px var(--accent);
+  z-index: 1;
+}
+.card.kb-focus .del-btn { opacity: 1; }
+
+/* sentinel for infinite scroll */
+#gallery-sentinel { height: 1px; width: 100%; }
+
+/* ─── Pagination ─── */
+#gallery-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+}
+#gallery-pagination.hidden { display: none; }
+#gallery-pagination .btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px; height: 36px; padding: 0 12px;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text); cursor: pointer;
+  font-size: 14px; transition: background .15s;
+}
+#gallery-pagination .btn:hover:not(:disabled) { background: #333; }
+#gallery-pagination .btn:disabled { opacity: .4; cursor: not-allowed; }
+#gallery-pagination .btn.active { background: var(--accent); color: #111; border-color: var(--accent); }
+#gallery-pagination .page-info { color: var(--text2); font-size: 13px; min-width: 80px; text-align: center; }
+#gallery-pagination .page-jump { display: flex; align-items: center; gap: 6px; }
+#gallery-pagination .page-jump input {
+  width: 50px; height: 32px; padding: 0 8px;
+  border-radius: 4px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text);
+  font-size: 14px; text-align: center;
+}
+#gallery-pagination .page-jump input:focus { outline: none; border-color: var(--accent); }
+
+/* ─── Reader View ─── */
+#reader-view {
+  flex: 1; position: relative; overflow: hidden;
+  display: none; background: #000;
+  touch-action: none;
+}
+#reader-view.active { display: flex; flex-direction: column; }
+
+#reader-toolbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 200;
+  height: var(--toolbar-h);
+  display: flex; align-items: center; gap: 4px; padding: 0 10px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.85), transparent);
+  transition: opacity .25s; pointer-events: auto;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+#reader-toolbar.hidden { opacity: 0; pointer-events: none; }
+#reader-toolbar .btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 28px; min-width: 28px; padding: 0 7px;
+  border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+  background: rgba(0,0,0,.5); color: var(--text); cursor: pointer;
+  font-size: 12px; white-space: nowrap;
+  flex-shrink: 0;
+}
+#reader-toolbar .btn:hover { background: rgba(255,255,255,.15); }
+#reader-toolbar .btn.active { background: var(--accent); color: #111; border-color: var(--accent); }
+#reader-toolbar .btn.disabled { opacity: .3; cursor: not-allowed; }
+
+/* Page canvas */
+#page-canvas {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; position: relative;
+  gap: 0; background: #000;
+}
+#page-canvas.orig {
+  overflow: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.page-img-wrap {
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; flex-shrink: 0;
+}
+/* Fit mode: fill available space */
+.page-img-wrap.fit {
+  width: 100%; height: 100%;
+}
+.page-img-wrap.fit img {
+  width: 100%; height: 100%;
+  max-width: none; max-height: none;
+  object-fit: contain;
+  user-select: none; -webkit-user-drag: none;
+  display: block;
+}
+/* Orig mode: natural size, scroll-to-zoom handled via JS transform */
+.page-img-wrap.orig {
+  width: auto; height: auto; min-width: min-content;
+  transform-origin: top left;   /* JS overrides per-zoom */
+}
+.page-img-wrap.orig img {
+  width: auto; height: auto;
+  display: block;
+  user-select: none; -webkit-user-drag: none;
+  cursor: move;  /* indicate draggable when hovering */
+}
+/* Rotate mode: rotate 90°, swap w/h logic */
+.page-img-wrap.rotate {
+  width: 100%; height: 100%;
+  overflow: visible;
+}
+.page-img-wrap.rotate img {
+  /* Before rotation: width = container height, height = container width.
+     After rotate(90deg) the visual footprint becomes container width × height,
+     which exactly fills the viewport. object-fit:contain preserves aspect ratio. */
+  width: var(--canvas-h, 100vh);
+  height: var(--canvas-w, 100vw);
+  max-width: none; max-height: none;
+  object-fit: contain;
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
+/* Thumb mode: grid of thumbnails */
+#page-canvas.thumb {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  align-content: start;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg);
+}
+#page-canvas.thumb .page-img-wrap {
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%;
+  background: var(--bg2);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color .15s, transform .15s;
+}
+#page-canvas.thumb .page-img-wrap:hover {
+  border-color: var(--accent);
+  transform: scale(1.02);
+}
+#page-canvas.thumb .page-img-wrap.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(126, 184, 247, 0.4);
+}
+#page-canvas.thumb .page-img-wrap img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  user-select: none; -webkit-user-drag: none;
+}
+#page-canvas.thumb .page-img-wrap .del-btn {
+  position: absolute; top: 4px; right: 4px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; cursor: pointer; opacity: 0; transition: opacity .15s;
+  z-index: 3; color: #fff; line-height: 1;
+}
+#page-canvas.thumb .page-img-wrap:hover .del-btn { opacity: 1; }
+#page-canvas.thumb .page-img-wrap .del-btn:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+#page-canvas.thumb .page-img-wrap .page-num {
+  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; color: rgba(255,255,255,.85);
+  background: rgba(0,0,0,.5); border-radius: 3px;
+  padding: 1px 5px; pointer-events: none;
+}
+
+/* double page */
+#page-canvas.double { gap: 0; }
+#page-canvas.double .page-img-wrap.fit { width: 50%; height: 100%; }
+#page-canvas.double .page-img-wrap.orig { width: auto; height: auto; }
+#page-canvas.double .page-img-wrap.rotate { width: 50%; height: 100%; }
+
+/* Loading spinner */
+.spinner {
+  width: 40px; height: 40px; border: 3px solid rgba(255,255,255,.1);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin .8s linear infinite; position: absolute;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* OSD */
+#osd {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: rgba(0,0,0,.75); color: #fff; font-size: 18px;
+  padding: 10px 20px; border-radius: 8px; pointer-events: none;
+  opacity: 0; transition: opacity .3s; z-index: 999;
+}
+#osd.show { opacity: 1; }
+
+
+/* ─── Loading skeleton ─── */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg3) 25%, #2e2e2e 50%, var(--bg3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius);
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+.card.skeleton .thumb-wrap { padding-bottom: 140%; }
+.card.skeleton .card-name { height: 12px; margin: 8px; border-radius: 4px; }
+
+/* ─── Empty / Error states ─── */
+#status-msg {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px; color: var(--text2); text-align: center; padding: 32px;
+  display: none;
+}
+#status-msg.show { display: flex; }
+#status-msg .status-icon { font-size: 48px; }
+#status-msg .status-text { font-size: 16px; }
+#status-msg .status-sub { font-size: 13px; }
+
+/* ─── Gallerize Modal ─── */
+#gallerize-modal {
+  display: none; position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.7); align-items: center; justify-content: center;
+}
+#gallerize-modal.show { display: flex; }
+#gallerize-box {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 24px 24px;
+  width: min(480px, 92vw); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+}
+#gallerize-box h3 {
+  font-size: 15px; font-weight: 600; color: var(--text);
+  margin: 0; display: flex; align-items: center; gap: 8px;
+}
+#gallerize-box .modal-close {
+  margin-left: auto; cursor: pointer; font-size: 18px;
+  color: var(--text2); background: none; border: none; line-height: 1;
+  padding: 2px 6px; border-radius: 4px;
+}
+#gallerize-box .modal-close:hover { color: var(--text); background: var(--bg3); }
+
+/* Mode selector */
+.gz-mode-row {
+  display: flex; gap: 8px;
+}
+.gz-mode-btn {
+  flex: 1; padding: 8px 0; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg3);
+  color: var(--text2); cursor: pointer; font-size: 13px; font-weight: 500;
+  transition: all .15s; text-align: center;
+}
+.gz-mode-btn.active {
+  border-color: var(--accent); background: rgba(126,184,247,.12);
+  color: var(--accent);
+}
+.gz-mode-btn:hover:not(.active) { background: #2d2d2d; color: var(--text); }
+
+/* Remote URL config */
+.gz-remote-section {
+  display: none; flex-direction: column; gap: 8px;
+}
+.gz-remote-section.show { display: flex; }
+.gz-label { font-size: 12px; color: var(--text2); }
+.gz-input {
+  width: 100%; height: 34px; padding: 0 10px;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font-size: 13px;
+}
+.gz-input:focus { outline: none; border-color: var(--accent); }
+.gz-hint { font-size: 11px; color: var(--text2); }
+
+/* Path info */
+.gz-path-row {
+  background: var(--bg3); border-radius: 6px; padding: 8px 10px;
+  font-size: 12px; color: var(--text2); word-break: break-all;
+  border: 1px solid var(--border);
+}
+.gz-path-row strong { color: var(--text); }
+
+/* Action buttons */
+.gz-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.gz-btn {
+  padding: 7px 16px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text); cursor: pointer;
+  font-size: 13px; font-weight: 500; transition: background .15s;
+}
+.gz-btn:hover { background: #333; }
+.gz-btn.primary {
+  background: var(--accent); color: #111; border-color: var(--accent);
+}
+.gz-btn.primary:hover { background: #9acbfa; }
+.gz-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Progress / result */
+.gz-progress {
+  display: none; flex-direction: column; gap: 10px;
+}
+.gz-progress.show { display: flex; }
+.gz-progress-bar-wrap {
+  height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden;
+}
+.gz-progress-bar {
+  height: 100%; background: var(--accent);
+  border-radius: 3px; transition: width .4s;
+}
+.gz-progress-text {
+  font-size: 12px; color: var(--text2);
+}
+.gz-result {
+  display: none; flex-direction: column; gap: 8px;
+}
+.gz-result.show { display: flex; }
+.gz-result-summary {
+  font-size: 13px; color: var(--text);
+  padding: 10px 12px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+}
+.gz-result-summary.ok { border-color: #4caf50; }
+.gz-result-summary.err { border-color: var(--danger); }
+.gz-stat-row {
+  display: flex; gap: 16px; font-size: 12px; color: var(--text2); flex-wrap: wrap;
+}
+.gz-stat-row span strong { color: var(--text); }
+.gz-errors {
+  max-height: 120px; overflow-y: auto;
+  font-size: 11px; color: var(--danger);
+  background: rgba(224,82,82,.08); border-radius: 4px;
+  padding: 6px 8px; border: 1px solid rgba(224,82,82,.2);
+}
+.gz-errors div { margin-bottom: 2px; word-break: break-all; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ─── Gallery Toolbar ─── -->
+  <div id="toolbar">
+    <button class="btn" id="btn-back" title="返回上级 (B)">←</button>
+    <div class="breadcrumb"><span id="breadcrumb-text">/</span></div>
+    <button class="btn" id="btn-del-mode" title="删除模式">🗑</button>
+  </div>
+
+  <!-- ─── Gallery Grid ─── -->
+  <div id="gallery-view">
+    <div id="gallery-grid"></div>
+    <div id="gallery-sentinel"></div>
+    <!-- Pagination -->
+    <div id="gallery-pagination" class="hidden">
+      <button class="btn" id="pg-first" title="首页">««</button>
+      <button class="btn" id="pg-prev" title="上一页">←</button>
+      <div class="page-info" id="pg-info">1 / 1</div>
+      <button class="btn" id="pg-next" title="下一页">→</button>
+      <button class="btn" id="pg-last" title="末页">»»</button>
+      <div class="page-jump">
+        <input type="number" id="pg-input" min="1" value="1">
+        <button class="btn" id="pg-go">Go</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Status (empty/error) ─── -->
+  <div id="status-msg">
+    <div class="status-icon" id="status-icon">📂</div>
+    <div class="status-text" id="status-text">空文件夹</div>
+    <div class="status-sub" id="status-sub"></div>
+  </div>
+
+  <!-- ─── Reader View ─── -->
+  <div id="reader-view">
+    <div id="reader-toolbar">
+      <button class="btn" id="rbtn-back" title="返回 (B/Esc)">←</button>
+      <button class="btn" id="rbtn-double" title="单/双页">单页</button>
+      <button class="btn" id="rbtn-rtl" title="翻页方向">LTR→</button>
+      <button class="btn" id="rbtn-view" title="视图模式 (O)">Fit</button>
+      <button class="btn" id="rbtn-thumb" title="缩略图 (T)">📷</button>
+      <button class="btn" id="rbtn-rotate" title="旋转 (V)">🔄</button>
+      <span id="page-info" style="color:#ccc;font-size:12px;flex:1;text-align:center;white-space:nowrap;overflow:hidden"></span>
+      <button class="btn" id="rbtn-fs" title="全屏 (F)">⛶</button>
+      <button class="btn" id="rbtn-edit" title="在编辑器中打开 (E)">✏️ Editor</button>
+      <button class="btn" id="rbtn-seq" title="导出序列 (S)">📤 导出序列</button>
+      <button class="btn" id="rbtn-gallerize" title="整理为 Gallery (v1)">✨ Gallerize</button>
+      <button class="btn danger" id="rbtn-del" title="删除当前图 (Del)">🗑</button>
+    </div>
+    <div id="page-canvas">
+      <div class="spinner" id="reader-spinner"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── OSD ─── -->
+<div id="osd"></div>
+
+<!-- ─── Gallerize Modal ─── -->
+<div id="gallerize-modal">
+  <div id="gallerize-box">
+    <h3>✨ Gallerize
+      <button class="modal-close" id="gz-close">✕</button>
+    </h3>
+
+    <!-- Current path -->
+    <div class="gz-path-row">
+      整理目录：<strong id="gz-path-display">/</strong>
+    </div>
+
+    <!-- Mode selector -->
+    <div>
+      <div class="gz-label" style="margin-bottom:6px">执行模式</div>
+      <div class="gz-mode-row">
+        <button class="gz-mode-btn active" data-mode="local">🖥 Local</button>
+        <button class="gz-mode-btn" data-mode="remote">🌐 Remote</button>
+      </div>
+    </div>
+
+    <!-- Remote config (hidden when local) -->
+    <div class="gz-remote-section" id="gz-remote-section">
+      <div class="gz-label">远程服务地址</div>
+      <input class="gz-input" id="gz-remote-url" type="url"
+             placeholder="http://192.168.1.100:8080"
+             autocomplete="off" spellcheck="false">
+      <div class="gz-hint">填写远端 imgproxy_plus 服务根地址，目录整理在本机执行，图片转换转发到远端 /api/img</div>
+    </div>
+
+    <!-- Image conversion params -->
+    <div>
+      <div class="gz-label">图片转换参数（可选）</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+        <div>
+          <div class="gz-label" style="margin-top:0">宽度</div>
+          <input class="gz-input" id="gz-w" type="number" min="1" placeholder="2560">
+        </div>
+        <div>
+          <div class="gz-label" style="margin-top:0">高度</div>
+          <input class="gz-input" id="gz-h" type="number" min="1" placeholder="2560">
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <select class="gz-input" id="gz-fit" style="height:auto;padding:6px">
+          <option value="">保持默认 (contain)</option>
+          <option value="contain">contain (包含)</option>
+          <option value="cover">cover (覆盖)</option>
+          <option value="fill">fill (填充)</option>
+          <option value="crop">crop (裁剪)</option>
+        </select>
+      </div>
+      <div style="margin-top:8px">
+        <div class="gz-label" style="margin-top:0">质量 (1-100)</div>
+        <input class="gz-input" id="gz-q" type="number" min="1" max="100" placeholder="90">
+      </div>
+    </div>
+
+    <!-- Concurrency (only for remote) -->
+    <div class="gz-remote-section" id="gz-concurrency-section">
+      <div class="gz-label">并发请求数</div>
+      <input class="gz-input" id="gz-concurrency" type="number" min="1" max="64" value="12">
+      <div class="gz-hint">A 服务器同时向 B 服务器发送的最大并发数（默认 12）</div>
+    </div>
+
+    <!-- Progress bar (shown during processing) -->
+    <div class="gz-progress" id="gz-progress">
+      <div class="gz-progress-text" id="gz-progress-text">正在处理…</div>
+      <div class="gz-progress-bar-wrap">
+        <div class="gz-progress-bar" id="gz-progress-bar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Result (shown after done) -->
+    <div class="gz-result" id="gz-result">
+      <div class="gz-result-summary" id="gz-result-summary"></div>
+      <div class="gz-stat-row" id="gz-stat-row"></div>
+      <div class="gz-errors" id="gz-errors" style="display:none"></div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="gz-actions">
+      <button class="gz-btn" id="gz-cancel">取消</button>
+      <button class="gz-btn primary" id="gz-run">开始整理</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════════════ */
+const IMG_EXTS = new Set([
+  'jpg','jpeg','jfif','jxl','jp2','jpx',   // JPEG family
+  'png','gif','webp','avif','bmp','svg',    // common web
+  'tiff','tif',                             // TIFF
+  'heif','heic',                            // Apple HEIF
+  'ico','cur',                              // icon formats
+]);
+const ZIP_EXTS = new Set(['zip','cbz','epub']);
+const COVER_RE = /^(\d{0,6}[-_\s]?)cover/i;
+
+function extOf(name) {
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : '';
+}
+function isImage(name) { return IMG_EXTS.has(extOf(name)); }
+function isZip(type) { return type === 'zip'; }
+function isDir(type) { return type === 'dir'; }
+
+/** Natural sort comparator */
+function naturalCmp(a, b) {
+  const re = /(\d+)/g;
+  const pa = a.split(re), pb = b.split(re);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const sa = pa[i] ?? '', sb = pb[i] ?? '';
+    if (i % 2 === 1) { // numeric segment
+      const na = parseInt(sa, 10) || 0, nb = parseInt(sb, 10) || 0;
+      if (na !== nb) return na - nb;
+    } else {
+      const c = sa.localeCompare(sb, undefined, {sensitivity: 'base'});
+      if (c !== 0) return c;
+    }
+  }
+  return 0;
+}
+
+function naturalSort(arr, key) {
+  return [...arr].sort((a, b) => naturalCmp(key ? a[key] : a, key ? b[key] : b));
+}
+
+/** Pick cover from a list of items (already natural-sorted) */
+function pickCover(items) {
+  const imgs = items.filter(it => it.type === 'file' && isImage(it.name));
+  if (!imgs.length) return null;
+  const cover = imgs.find(it => COVER_RE.test(it.name));
+  return cover || imgs[0];
+}
+
+/** Build a URL for serving a file */
+function fileUrl(path, name) {
+  // path already has leading slash, name is bare filename
+  const base = path.endsWith('/') ? path : path + '/';
+  return encodeFilePath(base + name);
+}
+
+/** Build a URL for a file inside a zip via ZipFS */
+function zipFileUrl(archivePath, internalPath) {
+  // archivePath like /foo/bar.cbz, internalPath like cover.jpg or ch1/01.jpg
+  // internalPath may contain slashes (sub-dirs), encode each segment separately
+  const encodedInternal = internalPath.split('/').map(s => encodeURIComponent(s)).join('/');
+  return '/zip' + encodeFilePath(archivePath) + '/' + encodedInternal;
+}
+
+function encodeFilePath(p) {
+  // Encode each path segment individually, preserving slashes
+  return p.split('/').map(s => s ? encodeURIComponent(s) : s).join('/');
+}
+
+function joinPath(...parts) {
+  return '/' + parts.join('/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+}
+
+/** Format file size */
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+/* ═══════════════════════════════════════════════════
+   API
+═══════════════════════════════════════════════════ */
+async function apiLs(path, opts = {}) {
+  const params = new URLSearchParams({
+    sort: 'name', order: 'asc',
+    page: String(opts.page ?? 1),
+    page_size: String(opts.page_size ?? 50),
+  });
+  // Encode path segments to handle special chars like # in directory names
+  const url = '/api/ls' + encodeFilePath(path.startsWith('/') ? path : '/' + path) + '?' + params;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function apiRm(path) {
+  // Encode path segments to handle special chars like # in directory names
+  const res = await fetch('/api/rm' + encodeFilePath(path.startsWith('/') ? path : '/' + path), { method: 'DELETE' });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Fetch all gallery items (dirs and zips) from a path.
+ * Used for sibling navigation in Reader.
+ * @param {string} path
+ */
+async function fetchAllGalleryItems(path) {
+  console.log('[fetchAllGalleryItems] called with path:', path);
+  const PAGE = 100;
+  let page = 1, all = [];
+  try {
+    while (true) {
+      const data = await apiLs(path, { page, page_size: PAGE });
+      console.log('[fetchAllGalleryItems] page', page, 'items:', data.items.length, 'total:', data.total);
+      for (const it of data.items) {
+        if (isDir(it.type) || isZip(it.type)) {
+          all.push(it);
+        }
+      }
+      if (data.page * data.page_size >= data.total || data.items.length === 0) break;
+      page++;
+    }
+    // Sort by name (natural sort) - use naturalCmp for comparison
+    const result = all.sort((a, b) => naturalCmp(a.name, b.name));
+    console.log('[fetchAllGalleryItems] returning', result.length, 'items');
+    return result;
+  } catch (err) {
+    console.error('[fetchAllGalleryItems] error:', err);
+    throw err;
+  }
+}
+
+/**
+ * Fetch ALL images in a path, handling pagination.
+ * @param {string}  path      — directory or zip path
+ * @param {boolean} recursive — when true, descend into sub-directories (used for zip reader)
+ */
+async function fetchAllImages(path, recursive = false) {
+  const PAGE = 200;
+  let page = 1, all = [], subdirs = [];
+  while (true) {
+    const data = await apiLs(path, { page, page_size: PAGE });
+    for (const it of data.items) {
+      if (it.type === 'file' && isImage(it.name)) {
+        all.push({ ...it, _path: path }); // keep original path for URL building
+      } else if (recursive && (it.type === 'dir')) {
+        subdirs.push(joinPath(path, it.name));
+      }
+    }
+    if (data.page * data.page_size >= data.total || data.items.length === 0) break;
+    page++;
+  }
+  // Recurse into subdirs (BFS order → natural sort across levels)
+  for (const sub of subdirs) {
+    const subImgs = await fetchAllImages(sub, true);
+    all = all.concat(subImgs);
+  }
+  // naturalSort only by name within each dir (cross-dir order by discovery = dir sort)
+  return naturalSort(all, 'name');
+}
+
+/** Fetch cover: get first page, find cover image; for zips recurse into subdirs */
+async function fetchCoverItem(path) {
+  try {
+    const data = await apiLs(path, { page: 1, page_size: 20 });
+    let imgs = naturalSort(data.items, 'name').filter(it => it.type === 'file' && isImage(it.name));
+    let coverPath = path; // the directory where the cover lives
+    // If no images at root but has subdirs, look for common image directory names first
+    // CBZ/ZIP files typically have cover in images/, image/, or Pictures/ subdir
+    if (!imgs.length) {
+      const subdirs = naturalSort(data.items, 'name').filter(it => it.type === 'dir');
+      // First, try common image directory names
+      const imageDirNames = new Set(['images', 'image', 'pictures', 'picture', 'imgs', 'img', 'photos', 'photo', 'scans', 'scan']);
+      const imageSubdir = subdirs.find(it => imageDirNames.has(it.name.toLowerCase()));
+      if (imageSubdir) {
+        coverPath = joinPath(path, imageSubdir.name);
+        const sub = await apiLs(coverPath, { page: 1, page_size: 5 });
+        imgs = naturalSort(sub.items, 'name').filter(it => it.type === 'file' && isImage(it.name));
+      } else if (subdirs.length) {
+        // Fallback: peek into first subdir (less common layout)
+        coverPath = joinPath(path, subdirs[0].name);
+        const sub = await apiLs(coverPath, { page: 1, page_size: 5 });
+        imgs = naturalSort(sub.items, 'name').filter(it => it.type === 'file' && isImage(it.name));
+      }
+    }
+    if (!imgs.length && data.total > 20) {
+      coverPath = path;
+      const data2 = await apiLs(path, { page: 2, page_size: 20 });
+      imgs = naturalSort(data2.items, 'name').filter(it => it.type === 'file' && isImage(it.name));
+    }
+    const item = pickCover(imgs);
+    return item ? { item, coverPath } : null;
+  } catch { return null; }
+}
+
+/* ═══════════════════════════════════════════════════
+   CONFIRM DIALOG — uses native window.confirm (Enter = OK)
+═══════════════════════════════════════════════════ */
+function showConfirm(title, msg) {
+  return Promise.resolve(window.confirm(title + '\n\n' + msg));
+}
+
+/* ═══════════════════════════════════════════════════
+   OSD
+═══════════════════════════════════════════════════ */
+let _osdTimer = null;
+function showOsd(msg, dur = 1200) {
+  const el = document.getElementById('osd');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_osdTimer);
+  _osdTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+/* ═══════════════════════════════════════════════════
+   SETTINGS  (persisted in localStorage)
+═══════════════════════════════════════════════════ */
+const Settings = {
+  defaults: { doublePages: false, rtl: false, viewMode: 'fit' },
+  _data: null,
+  load() {
+    try { this._data = { ...this.defaults, ...JSON.parse(localStorage.getItem('or-gallery') || '{}') }; }
+    catch { this._data = { ...this.defaults }; }
+  },
+  save() { localStorage.setItem('or-gallery', JSON.stringify(this._data)); },
+  get(k) { return this._data[k]; },
+  set(k, v) { this._data[k] = v; this.save(); },
+};
+Settings.load();
+
+/* ═══════════════════════════════════════════════════
+   READER POSITION  (persisted in localStorage)
+═══════════════════════════════════════════════════ */
+const ReaderPosition = {
+  _KEY: 'or-gallery-reader-pos',
+
+  /** Get saved position for a gallery path */
+  get(path) {
+    try {
+      const all = JSON.parse(localStorage.getItem(this._KEY) || '{}');
+      return all[path] ?? null;
+    } catch { return null; }
+  },
+
+  /** Save current position for a gallery path */
+  save(path, idx) {
+    try {
+      const all = JSON.parse(localStorage.getItem(this._KEY) || '{}');
+      all[path] = idx;
+      // Limit stored entries to 100 galleries
+      const keys = Object.keys(all);
+      if (keys.length > 100) {
+        // Remove oldest entries (first N keys)
+        const toRemove = keys.slice(0, keys.length - 100);
+        toRemove.forEach(k => delete all[k]);
+      }
+      localStorage.setItem(this._KEY, JSON.stringify(all));
+    } catch {}
+  },
+
+  /** Clear saved position for a gallery path */
+  clear(path) {
+    try {
+      const all = JSON.parse(localStorage.getItem(this._KEY) || '{}');
+      delete all[path];
+      localStorage.setItem(this._KEY, JSON.stringify(all));
+    } catch {}
+  },
+};
+
+/* ═══════════════════════════════════════════════════
+   GALLERIZE CONTROLLER
+═══════════════════════════════════════════════════ */
+const Gallerize = {
+  // ── localStorage keys ──────────────────────────────
+  LS_MODE: 'or-gallery-gz-mode',   // 'local' | 'remote'
+  LS_REMOTE: 'or-gallery-gz-remote', // remote base URL
+  LS_W: 'or-gallery-gz-w',         // image width
+  LS_H: 'or-gallery-gz-h',         // image height
+  LS_FIT: 'or-gallery-gz-fit',     // fit mode
+  LS_Q: 'or-gallery-gz-q',         // quality
+  LS_CONCURRENCY: 'or-gallery-gz-concurrency', // concurrency count
+
+  _mode: 'local',      // current selected mode
+  _remoteUrl: '',      // remote base URL
+  _imgParams: { w: null, h: null, fit: null, q: null }, // image conversion params
+  _concurrency: 12,    // remote concurrency (default 12)
+  _running: false,
+
+  init() {
+    // Restore persisted settings
+    this._mode      = localStorage.getItem(this.LS_MODE) || 'local';
+    this._remoteUrl = localStorage.getItem(this.LS_REMOTE) || '';
+    this._imgParams = {
+      w: localStorage.getItem(this.LS_W),
+      h: localStorage.getItem(this.LS_H),
+      fit: localStorage.getItem(this.LS_FIT),
+      q: localStorage.getItem(this.LS_Q),
+    };
+    this._concurrency = parseInt(localStorage.getItem(this.LS_CONCURRENCY) || '12', 10);
+
+    // Wire reader toolbar button (button is now in reader-view toolbar)
+    document.getElementById('rbtn-gallerize').addEventListener('click', () => this.open());
+
+    // Wire modal close buttons
+    document.getElementById('gz-close').addEventListener('click', () => this.close());
+    document.getElementById('gz-cancel').addEventListener('click', () => this.close());
+    document.getElementById('gallerize-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('gallerize-modal')) this.close();
+    });
+
+    // Mode selector
+    document.querySelectorAll('.gz-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._mode = btn.dataset.mode;
+        localStorage.setItem(this.LS_MODE, this._mode);
+        this._syncModeUI();
+      });
+    });
+
+    // Remote URL input — persist on change
+    document.getElementById('gz-remote-url').addEventListener('input', e => {
+      this._remoteUrl = e.target.value.trim();
+      localStorage.setItem(this.LS_REMOTE, this._remoteUrl);
+    });
+
+    // Image params inputs — persist on change
+    ['w','h','fit','q'].forEach(key => {
+      const el = document.getElementById('gz-' + key);
+      el.addEventListener('input', e => {
+        const val = e.target.value.trim();
+        this._imgParams[key] = val ? val : null;
+        localStorage.setItem(this['LS_' + key.toUpperCase()], val || '');
+      });
+    });
+
+    // Concurrency input — persist on change
+    document.getElementById('gz-concurrency').addEventListener('input', e => {
+      this._concurrency = parseInt(e.target.value, 10) || 12;
+      localStorage.setItem(this.LS_CONCURRENCY, String(this._concurrency));
+    });
+
+    // Run button
+    document.getElementById('gz-run').addEventListener('click', () => this.run());
+  },
+
+  // Resolve the directory to gallerize: always the directory Reader is currently browsing.
+  // Reader._path is the opened dir/zip path; if it's a zip, use its parent dir.
+  _readerDir() {
+    const p = Reader._path || GalleryView._path || '/';
+    if (Reader._isZip) {
+      // Strip the zip filename to get its parent directory
+      return p.replace(/\/[^/]+$/, '') || '/';
+    }
+    return p;
+  },
+
+  open() {
+    const path = this._readerDir();
+    document.getElementById('gz-path-display').textContent = path;
+
+    // Restore UI state
+    this._syncModeUI();
+    document.getElementById('gz-remote-url').value = this._remoteUrl;
+
+    // Restore image params
+    document.getElementById('gz-w').value = this._imgParams.w || '';
+    document.getElementById('gz-h').value = this._imgParams.h || '';
+    document.getElementById('gz-fit').value = this._imgParams.fit || '';
+    document.getElementById('gz-q').value = this._imgParams.q || '';
+    document.getElementById('gz-concurrency').value = String(this._concurrency);
+
+    // Reset progress & result
+    this._setRunning(false);
+    document.getElementById('gz-progress').classList.remove('show');
+    document.getElementById('gz-result').classList.remove('show');
+    document.getElementById('gz-run').textContent = '开始整理';
+    document.getElementById('gz-run').disabled = false;
+
+    document.getElementById('gallerize-modal').classList.add('show');
+  },
+
+  close() {
+    if (this._running) return; // prevent close while running
+    document.getElementById('gallerize-modal').classList.remove('show');
+  },
+
+  _syncModeUI() {
+    document.querySelectorAll('.gz-mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === this._mode);
+    });
+    const isRemote = this._mode === 'remote';
+    document.getElementById('gz-remote-section').classList.toggle('show', isRemote);
+    document.getElementById('gz-concurrency-section').classList.toggle('show', isRemote);
+  },
+
+  _setRunning(v) {
+    this._running = v;
+    document.getElementById('gz-run').disabled = v;
+    document.getElementById('gz-cancel').disabled = v;
+    document.getElementById('gz-close').style.pointerEvents = v ? 'none' : '';
+    // Disable mode buttons during run
+    document.querySelectorAll('.gz-mode-btn').forEach(btn => { btn.disabled = v; });
+  },
+
+  // Animate progress bar (fake progress until we get a response)
+  _startFakeProgress() {
+    const bar = document.getElementById('gz-progress-bar');
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    // Give browser a frame to apply the reset
+    requestAnimationFrame(() => {
+      bar.style.transition = 'width 25s cubic-bezier(0,.6,.3,1)';
+      bar.style.width = '85%';
+    });
+  },
+
+  _finishProgress(ok) {
+    const bar = document.getElementById('gz-progress-bar');
+    bar.style.transition = 'width .3s ease';
+    bar.style.width = ok ? '100%' : '0%';
+  },
+
+  async run() {
+    const path = this._readerDir();
+
+    // Validate remote URL if needed
+    if (this._mode === 'remote') {
+      const url = this._remoteUrl.trim();
+      if (!url) {
+        document.getElementById('gz-remote-url').focus();
+        showOsd('请填写远程服务地址', 2000);
+        return;
+      }
+    }
+
+    this._setRunning(true);
+
+    // Show progress
+    document.getElementById('gz-result').classList.remove('show');
+    const progressEl = document.getElementById('gz-progress');
+    progressEl.classList.add('show');
+    document.getElementById('gz-progress-text').textContent = '正在处理，请稍候…';
+    document.getElementById('gz-run').textContent = '处理中…';
+    this._startFakeProgress();
+
+    try {
+      const result = await this._callApi(path);
+      this._finishProgress(true);
+      document.getElementById('gz-progress-text').textContent = '完成';
+      this._showResult(result);
+
+      // Refresh gallery if run succeeded and not skipped
+      if (result.ok && !result.skipped) {
+        setTimeout(() => {
+          GalleryView.grid.innerHTML = '';
+          GalleryView.loadPage();
+        }, 800);
+      }
+    } catch (err) {
+      this._finishProgress(false);
+      document.getElementById('gz-progress-text').textContent = '请求失败: ' + err.message;
+      this._showError(err.message);
+    } finally {
+      this._setRunning(false);
+      document.getElementById('gz-run').textContent = '再次执行';
+      document.getElementById('gz-run').disabled = false;
+      document.getElementById('gz-cancel').textContent = '关闭';
+      document.getElementById('gz-cancel').disabled = false;
+    }
+  },
+
+  async _callApi(path) {
+    const headers = { 'Content-Type': 'application/json' };
+
+    // Always call local /api/gallerize.
+    // In remote mode, pass remote_url so the server uses it for image conversion only.
+    // Directory operations (flatten, cover, move) always run locally on this server.
+    const bodyObj = { path, type: 'v1' };
+    if (this._mode === 'remote') {
+      const base = this._remoteUrl.replace(/\/+$/, '');
+      bodyObj.remote_url = base + '/api/img';
+      bodyObj.concurrency = this._concurrency;
+    }
+    // Append image conversion params if specified
+    if (this._imgParams.w) bodyObj.w = parseInt(this._imgParams.w, 10);
+    if (this._imgParams.h) bodyObj.h = parseInt(this._imgParams.h, 10);
+    if (this._imgParams.fit) bodyObj.fit = this._imgParams.fit;
+    if (this._imgParams.q) bodyObj.q = parseInt(this._imgParams.q, 10);
+
+    const res = await fetch('/api/gallerize', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(bodyObj),
+      // Long timeout for large galleries
+      signal: AbortSignal.timeout ? AbortSignal.timeout(300_000) : undefined,
+    });
+
+    const json = await res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
+    if (!res.ok) {
+      throw new Error(json.message || `HTTP ${res.status}`);
+    }
+    return json;
+  },
+
+  _showResult(r) {
+    const summaryEl = document.getElementById('gz-result-summary');
+    const statEl    = document.getElementById('gz-stat-row');
+    const errEl     = document.getElementById('gz-errors');
+
+    if (r.skipped) {
+      summaryEl.className = 'gz-result-summary ok';
+      summaryEl.textContent = '✓ 已跳过（目录已完成整理，无需重复处理）';
+      statEl.innerHTML = '';
+      errEl.style.display = 'none';
+    } else if (r.ok) {
+      summaryEl.className = 'gz-result-summary ok';
+      summaryEl.textContent = '✓ 整理完成';
+
+      // Parse steps from the nested object returned by gallerize.lua
+      const steps = r.steps || {};
+      const parts = [];
+
+      // move_non_images step
+      const moveStep = steps.move_non_images;
+      if (moveStep && moveStep.count !== undefined) {
+        parts.push(`<span>移出非图片 <strong>${moveStep.count}</strong> 个</span>`);
+      }
+
+      // flatten step
+      const flatStep = steps.flatten;
+      if (flatStep && flatStep.dirs !== undefined) {
+        const dirCount = Array.isArray(flatStep.dirs) ? flatStep.dirs.length : flatStep.dirs;
+        parts.push(`<span>扁平化目录 <strong>${dirCount}</strong> 个</span>`);
+      }
+
+      // promote step
+      const promoteStep = steps.promote;
+      if (promoteStep && promoteStep.performed) {
+        const dirName = promoteStep.dir ? ` (${promoteStep.dir})` : '';
+        parts.push(`<span>单目录提升${escHtml(dirName)}</span>`);
+      }
+
+      // covers step — object: { "dirName": {generated, details}, ... }
+      const coversStep = steps.covers;
+      if (coversStep) {
+        let coverOk = 0, coverFail = 0;
+        for (const k of Object.keys(coversStep)) {
+          const c = coversStep[k];
+          if (c && c.generated) coverOk++; else coverFail++;
+        }
+        parts.push(`<span>封面 <strong>${coverOk}</strong> 个${coverFail ? `（失败 ${coverFail}）` : ''}</span>`);
+      }
+
+      // convert step — {processed, skipped, errors}
+      const convStep = steps.convert;
+      if (convStep) {
+        if (convStep.processed !== undefined)
+          parts.push(`<span>转换 <strong>${convStep.processed}</strong> 张</span>`);
+        if (convStep.skipped !== undefined && convStep.skipped > 0)
+          parts.push(`<span>跳过 <strong>${convStep.skipped}</strong> 张</span>`);
+      }
+
+      statEl.innerHTML = parts.join('');
+
+      // Errors from convert step
+      const errors = (convStep && convStep.errors) || r.errors || [];
+      if (errors.length) {
+        errEl.style.display = '';
+        errEl.innerHTML = errors.map(e => {
+          const src = e.file || e.src || '';
+          const msg = e.error || String(e);
+          return `<div>⚠ ${escHtml(src)}: ${escHtml(msg)}</div>`;
+        }).join('');
+      } else {
+        errEl.style.display = 'none';
+      }
+    } else {
+      summaryEl.className = 'gz-result-summary err';
+      summaryEl.textContent = '✗ 失败: ' + (r.message || '未知错误');
+      statEl.innerHTML = '';
+      errEl.style.display = 'none';
+    }
+
+    document.getElementById('gz-result').classList.add('show');
+  },
+
+  _showError(msg) {
+    const summaryEl = document.getElementById('gz-result-summary');
+    summaryEl.className = 'gz-result-summary err';
+    summaryEl.textContent = '✗ ' + msg;
+    document.getElementById('gz-stat-row').innerHTML = '';
+    document.getElementById('gz-errors').style.display = 'none';
+    document.getElementById('gz-result').classList.add('show');
+  },
+};
+
+/* ═══════════════════════════════════════════════════
+   ROUTER
+═══════════════════════════════════════════════════ */
+const Router = {
+  /**
+   * Parse URL parameters from location.href
+   * Supports: path, page, reader
+   * Example: /or-gallery?path=/my/dir&page=2&reader=/my/dir/gallery.zip
+   */
+  getParams() {
+    // CRITICAL: Use location.href to get the full URL including fragment.
+    // Browser decodes %23 to # and treats #... as fragment, which is NOT
+    // included in location.search. We need to manually extract params
+    // from the full URL to preserve # characters in directory names.
+    const fullUrl = location.href;
+    const params = { path: '/', page: 1, reader: null };
+
+    // Extract path
+    const pathMatch = fullUrl.match(/[?&]path=([^&]*)/);
+    if (pathMatch) {
+      params.path = decodeURIComponent(pathMatch[1]);
+    }
+
+    // Extract page (gallery page number)
+    const pageMatch = fullUrl.match(/[?&]page=(\d+)/);
+    if (pageMatch) {
+      params.page = parseInt(pageMatch[1], 10) || 1;
+    }
+
+    // Extract reader (path to open directly in reader)
+    const readerMatch = fullUrl.match(/[?&]reader=([^&]*)/);
+    if (readerMatch) {
+      params.reader = decodeURIComponent(readerMatch[1]);
+    }
+
+    return params;
+  },
+
+  getPath() {
+    return this.getParams().path;
+  },
+
+  push(path, opts = {}) {
+    // opts: { page, reader }
+    let url = location.pathname + '?path=' + encodeURIComponent(path);
+    if (opts.page && opts.page > 1) url += '&page=' + opts.page;
+    if (opts.reader) url += '&reader=' + encodeURIComponent(opts.reader);
+    history.pushState({ path, ...opts }, '', url);
+    App.navigate(path, false, opts);
+  },
+
+  /** Push with a focusName hint — Gallery will restore focus to that card */
+  pushWithFocus(path, focusName) {
+    const url = location.pathname + '?path=' + encodeURIComponent(path);
+    history.pushState({ path }, '', url);
+    App.navigateToGallery(path, focusName);
+  },
+
+  replace(path, opts = {}) {
+    let url = location.pathname + '?path=' + encodeURIComponent(path);
+    if (opts.page && opts.page > 1) url += '&page=' + opts.page;
+    if (opts.reader) url += '&reader=' + encodeURIComponent(opts.reader);
+    history.replaceState({ path, ...opts }, '', url);
+  },
+
+  /** Update current URL with page number (for gallery pagination) */
+  updatePage(page) {
+    const params = this.getParams();
+    let url = location.pathname + '?path=' + encodeURIComponent(params.path);
+    if (page > 1) url += '&page=' + page;
+    history.replaceState({ path: params.path, page }, '', url);
+  },
+};
+window.addEventListener('popstate', e => {
+  // Get params from URL (not from state, as state may be stale)
+  const params = Router.getParams();
+  App.navigate(params.path, true, { page: params.page, reader: params.reader });
+});
+
+/* ═══════════════════════════════════════════════════
+   GALLERY VIEW
+═══════════════════════════════════════════════════ */
+const GalleryView = {
+  el: document.getElementById('gallery-view'),
+  grid: document.getElementById('gallery-grid'),
+  sentinel: document.getElementById('gallery-sentinel'),
+  toolbar: document.getElementById('toolbar'),
+  pagination: null, // set in init()
+
+  _path: '/',
+  _page: 1,
+  _total: 0,
+  _pageSize: 16,  // fixed page size
+  _totalPages: 0,
+  _loading: false,
+  _delMode: false,
+
+  // IntersectionObserver for cover lazy-loading
+  _coverObserver: null,
+
+  // Keyboard focus index (-1 = no focus)
+  _kbIdx: -1,
+  // Card name to auto-focus after first page load (used when returning from sub-dir)
+  _focusName: null,
+
+  // ── Page cache ─────────────────────────────────────────────
+  // Save page number when leaving gallery (entering reader)
+  // Key: path, Value: pageNumber
+  _pageCache: new Map(),
+  _PAGE_CACHE_MAX: 20,
+
+  init() {
+    document.getElementById('btn-back').addEventListener('click', () => this.goBack());
+    document.getElementById('btn-del-mode').addEventListener('click', () => this.toggleDelMode());
+
+    // Pagination elements
+    this.pagination = document.getElementById('gallery-pagination');
+    document.getElementById('pg-first').addEventListener('click', () => this.goToPage(1));
+    document.getElementById('pg-prev').addEventListener('click', () => this.goToPage(this._page - 1));
+    document.getElementById('pg-next').addEventListener('click', () => this.goToPage(this._page + 1));
+    document.getElementById('pg-last').addEventListener('click', () => this.goToPage(this._totalPages));
+    document.getElementById('pg-go').addEventListener('click', () => {
+      const input = document.getElementById('pg-input');
+      const page = parseInt(input.value, 10);
+      if (page >= 1 && page <= this._totalPages) this.goToPage(page);
+    });
+    document.getElementById('pg-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('pg-go').click();
+    });
+
+    // Click on grid clears kb-focus
+    this.grid.addEventListener('click', () => {});
+    // Mouse move on any card → switch kb focus to it
+    this.el.addEventListener('mousemove', e => {
+      const card = e.target.closest('.card');
+      if (card) {
+        const cards = this._cards();
+        const idx = cards.indexOf(card);
+        if (idx !== -1 && idx !== this._kbIdx) this._setFocus(idx, false);
+      }
+    });
+
+    // Cover lazy-load observer
+    this._coverObserver = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          const card = e.target;
+          this._coverObserver.unobserve(card);
+          this._loadCover(card);
+        }
+      });
+    }, { rootMargin: '300px' });
+  },
+
+  /** Return all non-skeleton cards */
+  _cards() {
+    return Array.from(this.grid.querySelectorAll('.card:not(.skeleton)'));
+  },
+
+  /** Compute current column count from CSS grid layout */
+  _colCount() {
+    const cards = this._cards();
+    if (cards.length < 2) return 1;
+    const top0 = cards[0].getBoundingClientRect().top;
+    let cols = 1;
+    for (let i = 1; i < cards.length; i++) {
+      if (Math.abs(cards[i].getBoundingClientRect().top - top0) > 4) break;
+      cols++;
+    }
+    return cols;
+  },
+
+  /**
+   * Set keyboard focus to card at index idx.
+   * @param {number} idx
+   * @param {boolean} scroll  whether to scrollIntoView (default true)
+   */
+  _setFocus(idx, scroll = true) {
+    const cards = this._cards();
+    if (!cards.length) return;
+    idx = Math.max(0, Math.min(idx, cards.length - 1));
+
+    // Remove old focus
+    if (this._kbIdx >= 0 && this._kbIdx < cards.length) {
+      cards[this._kbIdx].classList.remove('kb-focus');
+    }
+    this._kbIdx = idx;
+    const card = cards[idx];
+    card.classList.add('kb-focus');
+    if (scroll) {
+      card.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+  },
+
+  /** Move kb focus: delta = ±1 (left/right) or ±cols (up/down) */
+  kbMove(delta) {
+    const cards = this._cards();
+    if (!cards.length) return;
+
+    // If no focus yet, pick first card
+    if (this._kbIdx < 0) { this._setFocus(0); return; }
+
+    const next = this._kbIdx + delta;
+    if (next < 0 || next >= cards.length) return;
+    this._setFocus(next);
+  },
+
+  /** Open the currently focused card */
+  kbEnter() {
+    const cards = this._cards();
+    if (this._kbIdx < 0 || this._kbIdx >= cards.length) return;
+    Router.push(cards[this._kbIdx].dataset.path);
+  },
+
+  /** Delete the currently focused card */
+  async kbDelete() {
+    const cards = this._cards();
+    if (this._kbIdx < 0 || this._kbIdx >= cards.length) return;
+    const card = cards[this._kbIdx];
+    card.querySelector('.del-btn')?.click();
+  },
+
+  async show(path, focusName = null, initialPage = null) {
+    // Save page number for previous path before switching
+    if (this._path && this._path !== path) {
+      this._savePageNum(this._path, this._page);
+    }
+
+    this._path = path;
+    this._total = 0;
+    this._totalPages = 0;
+    this._loading = false;
+    this._delMode = false;
+    this._kbIdx = -1;
+    this._focusName = focusName;
+
+    // Priority: URL param > saved page > 1
+    if (initialPage !== null && initialPage > 0) {
+      this._page = initialPage;
+    } else {
+      const savedPage = this._getPageNum(path);
+      this._page = savedPage || 1;
+    }
+
+    this.grid.innerHTML = '';
+    this.el.scrollTop = 0;
+
+    document.getElementById('btn-del-mode').classList.remove('active');
+    this.grid.classList.remove('del-mode');
+    document.getElementById('breadcrumb-text').textContent = path;
+    document.getElementById('btn-back').style.display = path === '/' ? 'none' : '';
+
+    this.el.classList.remove('hidden');
+    document.getElementById('reader-view').classList.remove('active');
+    document.getElementById('status-msg').classList.remove('show');
+    document.getElementById('toolbar').style.display = '';
+
+    // Update URL with current page
+    Router.updatePage(this._page);
+
+    await this.loadPage();
+  },
+
+  /** Save page number for a path */
+  _savePageNum(path, page) {
+    if (!path || page === 1) return; // don't save default page
+    this._pageCache.set(path, page);
+    if (this._pageCache.size > this._PAGE_CACHE_MAX) {
+      const firstKey = this._pageCache.keys().next().value;
+      this._pageCache.delete(firstKey);
+    }
+  },
+
+  /** Get and clear saved page number for a path */
+  _getPageNum(path) {
+    const page = this._pageCache.get(path);
+    if (page !== undefined) {
+      this._pageCache.delete(path);
+    }
+    return page;
+  },
+
+  /** Navigate to a specific page */
+  goToPage(page) {
+    if (page < 1 || page > this._totalPages || page === this._page) return;
+    this._page = page;
+    this.grid.innerHTML = '';
+    this.el.scrollTop = 0;
+    this._kbIdx = -1;
+    this._focusName = null;
+
+    // Update URL with new page
+    Router.updatePage(this._page);
+
+    // Save page number for this path
+    this._savePageNum(this._path, this._page);
+
+    this.loadPage();
+  },
+
+  async loadPage() {
+    if (this._loading) return;
+
+    this._loading = true;
+    this._appendSkeletons(4);
+
+    try {
+      const data = await apiLs(this._path, { page: this._page, page_size: this._pageSize });
+      this._total = data.total;
+      this._totalPages = Math.ceil(data.total / this._pageSize);
+
+      // Remove skeletons
+      this.grid.querySelectorAll('.card.skeleton').forEach(el => el.remove());
+
+      // Filter: only dir and zip
+      const items = data.items.filter(it => isDir(it.type) || isZip(it.type));
+      items.forEach(it => this._appendCard(it));
+
+      if (this._page === 1 && items.length === 0) {
+        this._showEmpty();
+        this.pagination.classList.add('hidden');
+      } else {
+        this._updatePagination();
+        this.pagination.classList.remove('hidden');
+      }
+
+      // Restore focus to the card we came from
+      if (this._focusName) {
+        const cards = this._cards();
+        const idx = cards.findIndex(c => c.dataset.name === this._focusName);
+        if (idx >= 0) {
+          requestAnimationFrame(() => this._setFocus(idx, true));
+        }
+        this._focusName = null;
+      }
+
+    } catch (err) {
+      this.grid.querySelectorAll('.card.skeleton').forEach(el => el.remove());
+      this._showError(err.message);
+      this.pagination.classList.add('hidden');
+    } finally {
+      this._loading = false;
+    }
+  },
+
+  _updatePagination() {
+    document.getElementById('pg-info').textContent = `${this._page} / ${this._totalPages || 1}`;
+    document.getElementById('pg-input').value = this._page;
+    document.getElementById('pg-input').max = this._totalPages;
+    document.getElementById('pg-first').disabled = this._page <= 1;
+    document.getElementById('pg-prev').disabled = this._page <= 1;
+    document.getElementById('pg-next').disabled = this._page >= this._totalPages;
+    document.getElementById('pg-last').disabled = this._page >= this._totalPages;
+  },
+
+  _appendSkeletons(n) {
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('div');
+      el.className = 'card skeleton';
+      el.innerHTML = '<div class="thumb-wrap"></div><div class="card-name skeleton"></div>';
+      this.grid.appendChild(el);
+    }
+  },
+
+  _appendCard(item) {
+    const isZipItem = isZip(item.type);
+    const icon = isZipItem ? '🗜️' : '📁';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.name = item.name;
+    card.dataset.type = item.type;
+    card.dataset.path = joinPath(this._path, item.name);
+    card.innerHTML = `
+      <div class="thumb-wrap">
+        <div class="placeholder">${icon}</div>
+        <img class="loading" alt="" loading="lazy">
+      </div>
+      <div class="card-info">
+        <div class="card-name">${escHtml(item.name)}</div>
+        <div class="card-meta">${icon} ${isZipItem ? fmtSize(item.size) : ''}</div>
+      </div>
+      <div class="del-btn" title="删除">✕</div>
+    `;
+
+    // Click → navigate
+    card.addEventListener('click', e => {
+      if (e.target.closest('.del-btn')) return;
+      // Sync kb focus index so subsequent keyboard nav starts from here
+      const cards = this._cards();
+      this._kbIdx = cards.indexOf(card);
+      Router.push(card.dataset.path);
+    });
+
+    // Delete button
+    card.querySelector('.del-btn').addEventListener('click', async e => {
+      e.stopPropagation();
+      const name = item.name;
+      const confirmed = await showConfirm(
+        '删除确认',
+        `将删除 "${name}"${isDir(item.type) ? ' 及其所有内容' : ''}，此操作不可撤销。`
+      );
+      if (!confirmed) return;
+      try {
+        await apiRm(card.dataset.path);
+        card.remove();
+        showOsd('已删除');
+      } catch (err) {
+        showOsd('删除失败: ' + err.message, 3000);
+      }
+    });
+
+    this.grid.appendChild(card);
+
+    // Observe for cover lazy load
+    this._coverObserver.observe(card);
+  },
+
+  async _loadCover(card) {
+    const path = card.dataset.path;
+    const type = card.dataset.type;
+    const img = card.querySelector('img');
+
+    const result = await fetchCoverItem(path);
+    if (!result) return;
+    const { item: coverItem, coverPath } = result;
+
+    let url;
+    if (isZip(type)) {
+      const low = coverPath.toLowerCase();
+      let zipBoundary = -1;
+      for (const ext of ZIP_EXTS) {
+        const idx = low.indexOf('.' + ext);
+        if (idx !== -1) { zipBoundary = idx + ext.length + 1; break; }
+      }
+      const internalDir = zipBoundary > 0 ? coverPath.slice(zipBoundary).replace(/^\/+/, '') : '';
+      const internalPath = internalDir ? internalDir + '/' + coverItem.name : coverItem.name;
+      const encodedInternal = internalPath.split('/').map(s => encodeURIComponent(s)).join('/');
+      url = '/zip' + encodeFilePath(path) + '/' + encodedInternal;
+    } else {
+      // 普通目录封面走 /img/ 做 vips 缩略图（360px 宽，cover 模式）
+      const rawUrl = fileUrl(coverPath, coverItem.name);
+      url = '/img' + rawUrl + '?w=360&h=504&fit=cover&q=82';
+    }
+
+    img.onload = () => { img.classList.remove('loading'); };
+    img.onerror = () => {
+      // vips 缩略图失败时回退到原图
+      const fallback = fileUrl(coverPath, coverItem.name);
+      if (img.src !== fallback) {
+        // Clear onerror to prevent infinite retry loop
+        img.onerror = null;
+        img.src = fallback;
+      } else {
+        // 原图也失败，移除图片元素
+        img.remove();
+      }
+    };
+    img.src = url;
+  },
+
+  toggleDelMode() {
+    this._delMode = !this._delMode;
+    document.getElementById('btn-del-mode').classList.toggle('active', this._delMode);
+    this.grid.classList.toggle('del-mode', this._delMode);
+  },
+
+  goBack() {
+    const parts = this._path.replace(/\/$/, '').split('/');
+    const currentName = parts[parts.length - 1] || null;
+    parts.pop();
+    const parent = parts.join('/') || '/';
+    Router.pushWithFocus(parent, currentName);
+  },
+
+  _showEmpty() {
+    const s = document.getElementById('status-msg');
+    document.getElementById('status-icon').textContent = '📂';
+    document.getElementById('status-text').textContent = '这里什么都没有';
+    document.getElementById('status-sub').textContent = '没有找到图片目录或压缩包';
+    s.classList.add('show');
+    this.el.classList.add('hidden');
+  },
+
+  _showError(msg) {
+    const s = document.getElementById('status-msg');
+    document.getElementById('status-icon').textContent = '⚠️';
+    document.getElementById('status-text').textContent = '加载失败';
+    document.getElementById('status-sub').textContent = msg;
+    s.classList.add('show');
+    this.el.classList.add('hidden');
+  },
+};
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ═══════════════════════════════════════════════════
+   READER VIEW
+═══════════════════════════════════════════════════ */
+const Reader = {
+  el: document.getElementById('reader-view'),
+  canvas: document.getElementById('page-canvas'),
+  toolbar: document.getElementById('reader-toolbar'),
+  spinner: document.getElementById('reader-spinner'),
+
+  _path: null,          // dir or zip path
+  _isZip: false,
+  _images: [],          // [{name, url}]
+  _idx: 0,              // current index (left page in double mode)
+  _viewMode: 'fit',     // fit | orig | rotate | thumb
+  _double: false,
+  _rtl: false,
+  _toolbarTimer: null,
+  _toolbarVisible: true,
+
+  // Touch state
+  _touch: { startX: 0, startY: 0, startTime: 0 },
+
+  // Drag state (orig mode pan)
+  _drag: { active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0, moved: false },
+
+  // Zoom state (orig mode wheel-to-zoom)
+  _scale: 1.0,
+  _SCALE_MIN: 0.1,
+  _SCALE_MAX: 10,
+
+  // ── Image Cache & Preload ───────────────────────────────────────────
+  // Cache pool: keeps loaded images in memory for instant switching
+  // Uses Map<url, {img: HTMLImageElement, loaded: boolean, loading: boolean}>
+  _imgCache: new Map(),
+  _CACHE_SIZE: 10,          // max images to keep in cache
+  _preloadQueue: [],        // pending preload URLs
+  _preloadAbort: false,     // flag to abort current preload batch
+
+  /** Get cached image or create new one */
+  _getCachedImg(url) {
+    let entry = this._imgCache.get(url);
+    if (!entry) {
+      entry = { img: new Image(), loaded: false, loading: false };
+      this._imgCache.set(url, entry);
+      this._trimCache();
+    }
+    return entry;
+  },
+
+  /** Trim cache to max size (LRU: remove oldest entries) */
+  _trimCache() {
+    if (this._imgCache.size <= this._CACHE_SIZE) return;
+    // Keep current page and neighbors, remove others
+    const keepUrls = new Set();
+    const step = this._double ? 2 : 1;
+    for (let i = Math.max(0, this._idx - 2); i <= Math.min(this._images.length - 1, this._idx + step + 2); i++) {
+      if (this._images[i]) keepUrls.add(this._images[i].url);
+    }
+    // Remove entries not in keepUrls
+    for (const [url] of this._imgCache) {
+      if (!keepUrls.has(url) && this._imgCache.size > this._CACHE_SIZE) {
+        this._imgCache.delete(url);
+      }
+    }
+  },
+
+  /** Load an image with promise */
+  _loadImg(url) {
+    return new Promise((resolve, reject) => {
+      const entry = this._getCachedImg(url);
+      if (entry.loaded) {
+        resolve(entry.img);
+        return;
+      }
+      if (entry.loading) {
+        // Wait for existing load
+        const checkLoaded = () => {
+          if (entry.loaded) resolve(entry.img);
+          else if (entry.img.onerror) reject(new Error('load failed'));
+          else requestAnimationFrame(checkLoaded);
+        };
+        checkLoaded();
+        return;
+      }
+      entry.loading = true;
+      entry.img.onload = () => {
+        entry.loaded = true;
+        entry.loading = false;
+        resolve(entry.img);
+      };
+      entry.img.onerror = () => {
+        entry.loading = false;
+        reject(new Error('Failed to load ' + url));
+      };
+      entry.img.src = url;
+    });
+  },
+
+  /** Smart preload: preload images around current index based on direction */
+  _smartPreload(direction = 0) {
+    // direction: -1 = going backward, 0 = unknown, 1 = going forward
+    this._preloadAbort = true;  // abort previous batch
+    this._preloadQueue = [];
+
+    const step = this._double ? 2 : 1;
+    const urls = [];
+
+    // Always preload immediate neighbors
+    for (let i = this._idx - 1; i <= this._idx + step; i++) {
+      if (i >= 0 && i < this._images.length) {
+        urls.push(this._images[i].url);
+      }
+    }
+
+    // Preload ahead based on direction
+    if (direction >= 0) {
+      // Going forward or unknown: preload next 5 pages
+      for (let i = this._idx + step; i < Math.min(this._images.length, this._idx + step + 5); i++) {
+        if (!urls.includes(this._images[i].url)) urls.push(this._images[i].url);
+      }
+    }
+    if (direction <= 0) {
+      // Going backward or unknown: preload previous 3 pages
+      for (let i = Math.max(0, this._idx - 4); i < this._idx; i++) {
+        if (!urls.includes(this._images[i].url)) urls.unshift(this._images[i].url);
+      }
+    }
+
+    // Start preloading
+    this._preloadAbort = false;
+    urls.forEach(url => this._preloadOne(url));
+  },
+
+  /** Preload a single image (non-blocking) */
+  _preloadOne(url) {
+    const entry = this._getCachedImg(url);
+    if (entry.loaded || entry.loading) return;
+    entry.loading = true;
+    entry.img.onload = () => {
+      entry.loaded = true;
+      entry.loading = false;
+    };
+    entry.img.onerror = () => {
+      entry.loading = false;
+    };
+    entry.img.src = url;
+  },
+
+  init() {
+    // Button wiring
+    document.getElementById('rbtn-back').onclick = () => this.close();
+    document.getElementById('rbtn-double').onclick = () => this.toggleDouble();
+    document.getElementById('rbtn-rtl').onclick = () => this.toggleRtl();
+    document.getElementById('rbtn-view').onclick = () => this.cycleViewMode();
+    document.getElementById('rbtn-thumb').onclick = () => this.toggleThumb();
+    document.getElementById('rbtn-rotate').onclick = () => this.toggleRotate();
+    document.getElementById('rbtn-fs').onclick = () => this.toggleFullscreen();
+    document.getElementById('rbtn-del').onclick = () => this.deleteCurrentPage();
+    document.getElementById('rbtn-edit').onclick = () => this.openInEditor();
+    document.getElementById('rbtn-seq').onclick = () => this.openInSequence();
+
+    // Canvas click zone
+    this.canvas.addEventListener('click', e => this._handleCanvasClick(e));
+
+    // ── Orig-mode drag-to-pan (mouse on canvas background) ─────────────────
+    this.canvas.addEventListener('mousedown', e => {
+      if (!this.canvas.classList.contains('orig')) return;
+      if (e.button !== 0) return;
+      // Don't start canvas drag if clicking on an image (image has its own handler)
+      if (e.target.closest('.page-img-wrap img')) return;
+      this._drag = { active: true, startX: e.clientX, startY: e.clientY,
+                     scrollLeft: this.canvas.scrollLeft, scrollTop: this.canvas.scrollTop,
+                     moved: false, source: 'canvas' };
+      this.canvas.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!this._drag.active) return;
+      const dx = e.clientX - this._drag.startX;
+      const dy = e.clientY - this._drag.startY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) this._drag.moved = true;
+      this.canvas.scrollLeft = this._drag.scrollLeft - dx;
+      this.canvas.scrollTop  = this._drag.scrollTop  - dy;
+    });
+    document.addEventListener('mouseup', () => {
+      if (!this._drag.active) return;
+      this._drag.active = false;
+      if (this.canvas.classList.contains('orig')) this.canvas.style.cursor = 'grab';
+    });
+
+    // ── Orig-mode drag-to-pan (touch, only for canvas background) ─────────
+    // Note: single-touch drag on images is handled in _appendPageImg
+    this.canvas.addEventListener('touchstart', e => {
+      if (!this.canvas.classList.contains('orig') || e.touches.length !== 1) return;
+      // Don't start canvas drag if touching on an image
+      const touch = e.touches[0];
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (el && el.closest('.page-img-wrap')) return;
+      this._drag = { active: true, startX: touch.clientX, startY: touch.clientY,
+                     scrollLeft: this.canvas.scrollLeft, scrollTop: this.canvas.scrollTop,
+                     source: 'canvas' };
+    }, { passive: true });
+    this.canvas.addEventListener('touchmove', e => {
+      if (!this._drag.active || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      this.canvas.scrollLeft = this._drag.scrollLeft - (t.clientX - this._drag.startX);
+      this.canvas.scrollTop  = this._drag.scrollTop  - (t.clientY - this._drag.startY);
+    }, { passive: true });
+    this.canvas.addEventListener('touchend', () => { this._drag.active = false; }, { passive: true });
+
+    // ── Orig-mode: wheel-to-zoom (Ctrl/Cmd+Wheel only) ────────────────────
+    // In orig mode, wheel zooms only when Ctrl/Cmd is held.
+    // Without modifier, wheel scrolls the page (native behavior).
+    this.canvas.addEventListener('wheel', e => {
+      if (!this.canvas.classList.contains('orig')) return;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const newScale = Math.min(this._SCALE_MAX, Math.max(this._SCALE_MIN, this._scale * delta));
+        if (newScale === this._scale) return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const wx = (this.canvas.scrollLeft + mx) / this._scale;
+        const wy = (this.canvas.scrollTop  + my) / this._scale;
+
+        this._scale = newScale;
+        this._applyScale();
+
+        this.canvas.scrollLeft = wx * this._scale - mx;
+        this.canvas.scrollTop  = wy * this._scale - my;
+      }
+      // Without Ctrl/Cmd: let native scroll take over (no preventDefault)
+    }, { passive: false });
+
+    // Touch swipe (non-orig)
+    this.el.addEventListener('touchstart', e => this._touchStart(e), { passive: true });
+    this.el.addEventListener('touchend', e => this._touchEnd(e), { passive: true });
+
+    // Fullscreen change
+    document.addEventListener('fullscreenchange', () => this._onFullscreenChange());
+
+    // Keep rotate-mode vars in sync when the canvas resizes (window resize / fullscreen)
+    new ResizeObserver(() => {
+      if (this._viewMode === 'rotate') this._updateRotateVars();
+    }).observe(this.canvas);
+  },
+
+  async open(path, isZipPath) {
+    // Save Gallery page number before switching to Reader
+    GalleryView._savePageNum(GalleryView._path, GalleryView._page);
+
+    this._path = path;
+    this._isZip = isZipPath;
+    this._double = Settings.get('doublePages');
+    this._rtl = Settings.get('rtl');
+    this._viewMode = Settings.get('viewMode');
+    this._scale = 1.0;   // reset zoom on each open
+    this._images = [];
+    // Restore saved reader position for this gallery
+    const savedIdx = ReaderPosition.get(path);
+    this._idx = savedIdx ?? 0;
+    // Clear cache for new album
+    this._imgCache.clear();
+
+    this._showToolbar(true);
+
+    // Switch to reader
+    document.getElementById('gallery-view').classList.add('hidden');
+    document.getElementById('status-msg').classList.remove('show');
+    document.getElementById('toolbar').style.display = 'none';
+    this.el.classList.add('active');
+
+    // Update toolbar buttons
+    this._syncButtons();
+
+    // Show spinner
+    this.spinner.style.display = '';
+    this.canvas.querySelectorAll('.page-img-wrap').forEach(el => el.remove());
+
+    try {
+      const rawImages = await fetchAllImages(path, isZipPath /* recursive inside zip */);
+      if (!rawImages.length) {
+        showOsd('没有找到图片', 2000);
+        this.close();
+        return;
+      }
+
+      this._images = rawImages.map(it => {
+        // For zip: it._path is the sub-dir inside the zip (or the zip root path itself)
+        // URL: /zip/<archivePath>/<relativeInternalPath>
+        if (isZipPath) {
+          // it._path = e.g. "/archives/book.cbz/ch1"  or  "/archives/book.cbz"
+          // it.name  = "page01.jpg"
+          // We need internal path = everything after the zip boundary in _path + / + name
+          const zipBoundary = (() => {
+            const low = it._path.toLowerCase();
+            for (const ext of ZIP_EXTS) {
+              const idx = low.indexOf('.' + ext);
+              if (idx !== -1) return idx + ext.length + 1; // position after ".ext"
+            }
+            return -1;
+          })();
+          let internalDir = zipBoundary > 0 ? it._path.slice(zipBoundary).replace(/^\/+/, '') : '';
+          const internalPath = internalDir ? internalDir + '/' + it.name : it.name;
+          return { name: it.name, url: zipFileUrl(path, internalPath) };
+        } else {
+          return { name: it.name, url: fileUrl(it._path, it.name) };
+        }
+      });
+      this.spinner.style.display = 'none';
+      this._renderPage();
+    } catch (err) {
+      this.spinner.style.display = 'none';
+      showOsd('加载失败: ' + err.message, 3000);
+      this.close();
+    }
+  },
+
+  close() {
+    // Save current reader position before closing
+    if (this._path) ReaderPosition.save(this._path, this._idx);
+    this.el.classList.remove('active');
+    document.getElementById('gallery-view').classList.remove('hidden');
+    document.getElementById('toolbar').style.display = '';
+    if (document.fullscreenElement) document.exitFullscreen();
+    App.backToGallery();
+  },
+
+  /** Go to previous/next gallery in parent directory */
+  async goToSibling(delta) {
+    // delta: -1 = previous, 1 = next
+    console.log('[goToSibling] called, delta:', delta, '_path:', this._path, '_prevPath:', App._prevPath, '_fromName:', App._fromName);
+    
+    if (!this._path) {
+      console.error('[goToSibling] _path is null/undefined');
+      showOsd('无法切换：路径未知', 2000);
+      return;
+    }
+
+    const parentPath = App._prevPath || App._parentOf(this._path);
+    const currentName = App._fromName || (this._path.replace(/\/$/, '').split('/').pop() || '');
+    console.log('[goToSibling] parentPath:', parentPath, 'currentName:', currentName);
+
+    if (!parentPath) {
+      console.error('[goToSibling] parentPath is null/undefined');
+      showOsd('无法切换：无法确定父目录', 2000);
+      return;
+    }
+
+    // Fetch all items in parent directory
+    try {
+      console.log('[goToSibling] fetching items from:', parentPath);
+      const items = await fetchAllGalleryItems(parentPath);
+      console.log('[goToSibling] fetched items count:', items.length);
+      if (!items.length) {
+        showOsd('父目录为空', 2000);
+        return;
+      }
+
+      // Find current item index
+      const idx = items.findIndex(it => it.name === currentName);
+      console.log('[goToSibling] current item index:', idx, 'item names:', items.map(it => it.name).slice(0, 5));
+      if (idx === -1) {
+        showOsd('未找到当前项', 2000);
+        return;
+      }
+
+      // Calculate sibling index
+      const siblingIdx = idx + delta;
+      if (siblingIdx < 0 || siblingIdx >= items.length) {
+        showOsd(delta < 0 ? '已经是第一个' : '已经是最后一个', 1500);
+        return;
+      }
+
+      // Navigate to sibling
+      const sibling = items[siblingIdx];
+      const siblingPath = joinPath(parentPath, sibling.name);
+      console.log('[goToSibling] navigating to sibling:', sibling.name, 'path:', siblingPath);
+
+      // Save focus info for return
+      App._prevPath = parentPath;
+      App._fromName = sibling.name;
+
+      // Open sibling gallery
+      const isZipItem = isZip(sibling.type);
+      await this.open(siblingPath, isZipItem);
+      console.log('[goToSibling] opened successfully');
+
+    } catch (err) {
+      console.error('[goToSibling] error:', err);
+      showOsd('切换失败: ' + err.message, 2000);
+    }
+  },
+
+  goToPrevGallery() { return this.goToSibling(-1); },
+  goToNextGallery() { return this.goToSibling(1); },
+
+  _renderPage(direction = 0) {
+    // Clear canvas
+    this.canvas.querySelectorAll('.page-img-wrap').forEach(el => el.remove());
+    // Reset classes then apply current state
+    this.canvas.className = '';
+    if (this._viewMode === 'orig') {
+      this.canvas.classList.add('orig');
+      this.canvas.style.cursor = 'grab';
+    } else if (this._viewMode === 'thumb') {
+      this.canvas.classList.add('thumb');
+      this.canvas.style.cursor = '';
+    } else {
+      this.canvas.style.cursor = '';
+    }
+    if (this._double) this.canvas.classList.add('double');
+    this.canvas.style.flexDirection = this._rtl ? 'row-reverse' : 'row';
+
+    // For rotate mode: expose canvas dimensions as CSS vars so the img
+    // can be sized width=canvasH, height=canvasW before rotation,
+    // making it visually fill the canvas after rotate(90deg).
+    if (this._viewMode === 'rotate') this._updateRotateVars();
+
+    // Thumb mode: show all images in a grid
+    if (this._viewMode === 'thumb') {
+      this._images.forEach((_, idx) => this._appendThumbImg(idx));
+      this._updatePageInfo();
+      this._showToolbar(true);
+      return;
+    }
+
+    const count = this._double ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const idx = this._idx + i;
+      if (idx >= this._images.length) break;
+      this._appendPageImg(idx);
+    }
+
+    // Apply zoom if in orig mode (scale persists across page turns)
+    if (this._viewMode === 'orig') this._applyScale();
+
+    this._updatePageInfo();
+    this._showToolbar(true);
+
+    // Smart preload based on direction
+    this._smartPreload(direction);
+  },
+
+  _appendPageImg(idx) {
+    const item = this._images[idx];
+    const wrap = document.createElement('div');
+    // viewMode class controls img sizing
+    wrap.className = 'page-img-wrap ' + this._viewMode;
+    wrap.dataset.idx = idx;
+
+    // Show loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'spinner';
+    loadingIndicator.style.cssText = 'width:32px;height:32px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.7;';
+    wrap.appendChild(loadingIndicator);
+
+    const img = document.createElement('img');
+    img.alt = item.name;
+    img.draggable = false;
+    img.style.opacity = '0';
+    img.style.transition = 'opacity 0.2s';
+
+    // Apply rotation class if needed
+    if (this._viewMode === 'rotate') img.classList.add('rotate');
+
+    // Use cached image if available
+    const entry = this._getCachedImg(item.url);
+
+    const showImg = () => {
+      loadingIndicator.style.display = 'none';
+      img.style.opacity = '1';
+    };
+
+    if (entry.loaded) {
+      // Already cached - use immediately
+      img.src = item.url;
+      showImg();
+    } else {
+      // Load with indicator
+      img.onload = showImg;
+      img.onerror = () => {
+        loadingIndicator.innerHTML = '⚠️';
+        loadingIndicator.className = '';
+        loadingIndicator.style.cssText = 'font-size:24px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);';
+      };
+      // Trigger load via cache system
+      this._loadImg(item.url).then(showImg).catch(() => {});
+      img.src = item.url;
+    }
+
+    // ── Orig-mode interaction on image ─────────────────────────────
+    if (this._viewMode === 'orig') {
+      // Mouse hover: just moving over the image scrolls it
+      img.addEventListener('mouseenter', e => {
+        if (!this.canvas.classList.contains('orig')) return;
+        // Capture pointer to track movement even if mouse leaves briefly
+        img.setPointerCapture(e.pointerId);
+      });
+
+      img.addEventListener('mousemove', e => {
+        if (!this.canvas.classList.contains('orig')) return;
+        // Scroll canvas based on mouse movement delta
+        this.canvas.scrollLeft += e.movementX;
+        this.canvas.scrollTop += e.movementY;
+      });
+
+      // Wheel: scroll canvas (pan) when hovering over image
+      img.addEventListener('wheel', e => {
+        if (!this.canvas.classList.contains('orig')) return;
+        e.preventDefault();
+        this.canvas.scrollLeft += e.deltaX || e.deltaY;
+      }, { passive: false });
+
+      // Touch drag on image (still needed for touch devices)
+      img.addEventListener('touchstart', e => {
+        if (!this.canvas.classList.contains('orig') || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        this._drag = {
+          active: true,
+          startX: t.clientX,
+          startY: t.clientY,
+          scrollLeft: this.canvas.scrollLeft,
+          scrollTop: this.canvas.scrollTop,
+          source: 'img'
+        };
+      }, { passive: true });
+
+      img.addEventListener('touchmove', e => {
+        if (!this._drag.active || this._drag.source !== 'img' || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const dx = t.clientX - this._drag.startX;
+        const dy = t.clientY - this._drag.startY;
+        this.canvas.scrollLeft = this._drag.scrollLeft - dx;
+        this.canvas.scrollTop = this._drag.scrollTop - dy;
+      }, { passive: true });
+
+      img.addEventListener('touchend', () => {
+        if (this._drag.source === 'img') this._drag.active = false;
+      }, { passive: true });
+    }
+
+    wrap.appendChild(img);
+    this.canvas.appendChild(wrap);
+  },
+
+  _appendThumbImg(idx) {
+    const item = this._images[idx];
+    const wrap = document.createElement('div');
+    wrap.className = 'page-img-wrap';
+    wrap.dataset.idx = idx;
+
+    // Highlight current page
+    if (idx === this._idx) wrap.classList.add('active');
+
+    // Show loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'spinner';
+    loadingIndicator.style.cssText = 'width:24px;height:24px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.7;';
+    wrap.appendChild(loadingIndicator);
+
+    const img = document.createElement('img');
+    img.alt = item.name;
+    img.draggable = false;
+
+    // Build thumbnail URL using same logic as gallery cover
+    // Use imgproxy for consistent thumbnail generation (360x360 square)
+    let thumbUrl;
+    if (this._isZip) {
+      thumbUrl = item.url;
+    } else {
+      const rawUrl = item.url.replace(/^\/webdav/, '');
+      thumbUrl = '/img' + rawUrl + '?w=360&h=360&fit=cover&q=75';
+    }
+
+    img.src = thumbUrl;
+    img.onload = () => { loadingIndicator.style.display = 'none'; };
+    img.onerror = () => {
+      // 缩略图失败时回退到原图（像 gallery 封面一样）
+      if (img.src !== item.url) {
+        img.onerror = null; // 防止无限重试
+        img.src = item.url;
+      } else {
+        loadingIndicator.innerHTML = '⚠️';
+        loadingIndicator.className = '';
+        loadingIndicator.style.cssText = 'font-size:18px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);';
+      }
+    };
+
+    // Page number badge
+    const pageNum = document.createElement('div');
+    pageNum.className = 'page-num';
+    pageNum.textContent = idx + 1;
+    wrap.appendChild(pageNum);
+
+    // Delete button (only for non-zip)
+    if (!this._isZip) {
+      const delBtn = document.createElement('div');
+      delBtn.className = 'del-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = '删除';
+      delBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!window.confirm(`删除图片\n\n删除 "${item.name}"？此操作不可撤销。`)) return;
+        const fileDir = item._path || this._path;
+        const filePath = joinPath(fileDir, item.name);
+        try {
+          await apiRm(filePath);
+          this._images.splice(idx, 1);
+          if (this._idx >= this._images.length) {
+            this._idx = Math.max(0, this._images.length - 1);
+          }
+          this._renderPage();
+          showOsd('已删除');
+        } catch (err) {
+          showOsd('删除失败: ' + err.message, 3000);
+        }
+      });
+      wrap.appendChild(delBtn);
+    }
+
+    // Click to navigate to this image
+    wrap.addEventListener('click', () => {
+      this._idx = idx;
+      if (this._path) ReaderPosition.save(this._path, this._idx);
+      // Switch back to fit mode
+      this._viewMode = 'fit';
+      Settings.set('viewMode', 'fit');
+      this._syncButtons();
+      this._renderPage();
+    });
+
+    wrap.appendChild(img);
+    this.canvas.appendChild(wrap);
+  },
+
+  /** Apply current _scale to all orig-mode page wraps */
+  _applyScale() {
+    this.canvas.querySelectorAll('.page-img-wrap.orig').forEach(wrap => {
+      wrap.style.transform = `scale(${this._scale})`;
+      wrap.style.transformOrigin = 'top left';
+    });
+  },
+
+  /** Update --canvas-w / --canvas-h CSS vars used by rotate-mode sizing */
+  _updateRotateVars() {
+    // getBoundingClientRect reflects the actual rendered size after layout
+    const rect = this.canvas.getBoundingClientRect();
+    const w = rect.width  || this.canvas.clientWidth;
+    const h = rect.height || this.canvas.clientHeight;
+    // In double-page mode each slot is half the canvas width
+    const slotW = this._double ? w / 2 : w;
+    this.canvas.style.setProperty('--canvas-w', slotW + 'px');
+    this.canvas.style.setProperty('--canvas-h', h + 'px');
+  },
+
+  _updatePageInfo() {
+    const total = this._images.length;
+    const cur = this._idx + 1;
+    const info = this._double
+      ? `${cur}–${Math.min(cur + 1, total)} / ${total}`
+      : `${cur} / ${total}`;
+    document.getElementById('page-info').textContent = info;
+    document.getElementById('rbtn-del').classList.toggle('disabled', this._isZip);
+  },
+
+  navigate(delta) {
+    const step = this._double ? 2 : 1;
+    const newIdx = this._idx + (this._rtl ? -delta : delta) * step;
+    if (newIdx < 0 || newIdx >= this._images.length) return;
+    this._idx = newIdx;
+    // Save position for this gallery
+    if (this._path) ReaderPosition.save(this._path, this._idx);
+    this._renderPage(delta);  // pass direction for smart preload
+  },
+
+  gotoFirst() {
+    this._idx = 0;
+    if (this._path) ReaderPosition.save(this._path, this._idx);
+    this._renderPage(1);
+  },
+  gotoLast() {
+    const step = this._double ? 2 : 1;
+    this._idx = Math.max(0, this._images.length - step);
+    if (this._path) ReaderPosition.save(this._path, this._idx);
+    this._renderPage(-1);
+  },
+
+  toggleDouble() {
+    this._double = !this._double;
+    Settings.set('doublePages', this._double);
+    this._syncButtons();
+    this._renderPage(0);
+  },
+
+  toggleRtl() {
+    this._rtl = !this._rtl;
+    Settings.set('rtl', this._rtl);
+    this._syncButtons();
+    this._renderPage(0);
+  },
+
+  cycleViewMode() {
+    const modes = ['fit', 'orig', 'thumb'];
+    const next = modes[(modes.indexOf(this._viewMode) + 1) % modes.length];
+    this._viewMode = next;
+    // Reset zoom when entering orig mode
+    if (next === 'orig') this._scale = 1.0;
+    Settings.set('viewMode', next);
+    this._syncButtons();
+    this._renderPage(0);
+  },
+
+  toggleThumb() {
+    if (this._viewMode === 'thumb') {
+      this._viewMode = 'fit';
+    } else {
+      this._viewMode = 'thumb';
+    }
+    Settings.set('viewMode', this._viewMode);
+    this._syncButtons();
+    this._renderPage(0);
+  },
+
+  toggleRotate() {
+    const newMode = this._viewMode === 'rotate' ? 'fit' : 'rotate';
+    this._viewMode = newMode;
+    Settings.set('viewMode', newMode);
+    this._syncButtons();
+    this._renderPage(0);
+  },
+
+  toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      this.el.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen();
+    }
+  },
+
+  _onFullscreenChange() {
+    const isFs = !!document.fullscreenElement;
+    document.getElementById('rbtn-fs').classList.toggle('active', isFs);
+    if (isFs) this._autoHideToolbar();
+  },
+
+  async deleteCurrentPage() {
+    if (this._isZip) return;
+    const item = this._images[this._idx];
+    if (!item) return;
+
+    if (!window.confirm(`删除图片\n\n删除 "${item.name}"？此操作不可撤销。`)) return;
+
+    // item._path is the actual directory containing the file (may be a sub-dir)
+    const fileDir = item._path || this._path;
+    const filePath = joinPath(fileDir, item.name);
+    try {
+      await apiRm(filePath);
+      this._images.splice(this._idx, 1);
+      if (this._idx >= this._images.length) this._idx = Math.max(0, this._images.length - 1);
+      if (!this._images.length) { this.close(); return; }
+      this._renderPage();
+      showOsd('已删除');
+    } catch (err) {
+      showOsd('删除失败: ' + err.message, 3000);
+    }
+  },
+
+  openInEditor() {
+    if (!this._images || this._images.length === 0) return;
+    const item = this._images[this._idx];
+    if (!item) return;
+    const src = encodeURIComponent(item.url);
+    window.open(`/img-editor?src=${src}`, '_blank');
+  },
+
+  openInSequence() {
+    if (!this._images || this._images.length === 0) return;
+    // Encode all image URLs as base64 JSON for the sequence editor
+    const urls = this._images.map(img => img.url);
+    const encoded = btoa(encodeURIComponent(JSON.stringify(urls)));
+    window.open(`/img-sequence?gallery=${encoded}`, '_blank');
+  },
+
+  _syncButtons() {
+    document.getElementById('rbtn-double').textContent = this._double ? '双页' : '单页';
+    document.getElementById('rbtn-double').classList.toggle('active', this._double);
+    document.getElementById('rbtn-rtl').textContent = this._rtl ? '←RTL' : 'LTR→';
+    document.getElementById('rbtn-rtl').classList.toggle('active', this._rtl);
+    document.getElementById('rbtn-view').textContent = this._viewMode === 'thumb' ? 'Fit' : (this._viewMode === 'orig' ? 'Orig' : 'Fit');
+    document.getElementById('rbtn-view').classList.toggle('active', this._viewMode === 'orig');
+    document.getElementById('rbtn-thumb').classList.toggle('active', this._viewMode === 'thumb');
+    document.getElementById('rbtn-rotate').classList.toggle('active', this._viewMode === 'rotate');
+    // Hide delete button in thumb mode (each thumb has its own delete)
+    document.getElementById('rbtn-del').style.display = this._viewMode === 'thumb' ? 'none' : '';
+  },
+
+  _showToolbar(force = false) {
+    if (this._toolbarVisible && !force) return;
+    this._toolbarVisible = true;
+    this.toolbar.classList.remove('hidden');
+    clearTimeout(this._toolbarTimer);
+    if (document.fullscreenElement) this._autoHideToolbar();
+  },
+
+  _autoHideToolbar() {
+    clearTimeout(this._toolbarTimer);
+    this._toolbarTimer = setTimeout(() => {
+      this._toolbarVisible = false;
+      this.toolbar.classList.add('hidden');
+    }, 3000);
+  },
+
+  _handleCanvasClick(e) {
+    if (e.target.closest('#reader-toolbar')) return;
+    // If user just panned in orig mode, don't treat mouseup as a navigation click
+    if (this._drag.moved) { this._drag.moved = false; return; }
+    // Also ignore clicks that started on an image (they have their own drag handler)
+    if (e.target.closest('.page-img-wrap img')) return;
+    const rect = this.el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const zone = rect.width / 3;
+
+    if (x < zone) {
+      this._showToolbar(true);
+      this.navigate(this._rtl ? 1 : -1); // left zone → prev (LTR) or next (RTL)
+    } else if (x > rect.width - zone) {
+      this._showToolbar(true);
+      this.navigate(this._rtl ? -1 : 1); // right zone → next (LTR) or prev (RTL)
+    } else {
+      // Middle zone: toggle toolbar
+      if (this._toolbarVisible) {
+        this._toolbarVisible = false;
+        this.toolbar.classList.add('hidden');
+      } else {
+        this._showToolbar(true);
+      }
+    }
+  },
+
+  _touchStart(e) {
+    const t = e.touches[0];
+    this._touch.startX = t.clientX;
+    this._touch.startY = t.clientY;
+    this._touch.startTime = Date.now();
+  },
+
+  _touchEnd(e) {
+    const t = e.changedTouches[0];
+    const dx = t.clientX - this._touch.startX;
+    const dy = t.clientY - this._touch.startY;
+    const dt = Date.now() - this._touch.startTime;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 400) {
+      // Swipe
+      if (dx < 0) {
+        // swipe left → next (LTR) or prev (RTL)
+        this.navigate(this._rtl ? -1 : 1);
+      } else {
+        // swipe right → prev (LTR) or next (RTL)
+        this.navigate(this._rtl ? 1 : -1);
+      }
+    }
+  },
+};
+
+/* ═══════════════════════════════════════════════════
+   KEYBOARD HANDLER
+═══════════════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  // Ignore keyboard shortcuts when focus is in an input/textarea
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  const inReader = Reader.el.classList.contains('active');
+
+  if (inReader) {
+    switch (e.key) {
+      case 'ArrowLeft': case 'ArrowUp':
+        e.preventDefault();
+        Reader.navigate(-1);
+        break;
+      case 'ArrowRight': case 'ArrowDown':
+        e.preventDefault();
+        Reader.navigate(1);
+        break;
+      case 'Home':
+        e.preventDefault();
+        Reader.gotoFirst();
+        break;
+      case 'End':
+        e.preventDefault();
+        Reader.gotoLast();
+        break;
+      case 'Escape': case 'b': case 'B':
+        Reader.close();
+        break;
+      case 'f': case 'F':
+        Reader.toggleFullscreen();
+        break;
+      case 'o': case 'O':
+        Reader.cycleViewMode();
+        break;
+      case 't': case 'T':
+        Reader.toggleThumb();
+        break;
+      case 'v': case 'V':
+        Reader.toggleRotate();
+        break;
+      case 'Delete':
+        Reader.deleteCurrentPage();
+        break;
+      case 'e': case 'E':
+        Reader.openInEditor();
+        break;
+      case 's': case 'S':
+        Reader.openInSequence();
+        break;
+      case '[':
+        console.log('[keydown] [ pressed, calling goToPrevGallery');
+        Reader.goToPrevGallery();
+        break;
+      case ']':
+        console.log('[keydown] ] pressed, calling goToNextGallery');
+        Reader.goToNextGallery();
+        break;
+    }
+  } else {
+    // Gallery mode — keyboard navigation
+    switch (e.key) {
+      case 'ArrowRight': {
+        e.preventDefault();
+        GalleryView.kbMove(1);
+        break;
+      }
+      case 'ArrowLeft': {
+        e.preventDefault();
+        GalleryView.kbMove(-1);
+        break;
+      }
+      case 'ArrowDown': {
+        e.preventDefault();
+        GalleryView.kbMove(GalleryView._colCount());
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        GalleryView.kbMove(-GalleryView._colCount());
+        break;
+      }
+      case 'Enter': {
+        e.preventDefault();
+        GalleryView.kbEnter();
+        break;
+      }
+      case 'Delete':
+      case 'Backspace': {
+        e.preventDefault();
+        GalleryView.kbDelete();
+        break;
+      }
+      case 'b': case 'B': {
+        GalleryView.goBack();
+        break;
+      }
+      case '[': {
+        e.preventDefault();
+        GalleryView.goToPage(GalleryView._page - 1);
+        break;
+      }
+      case ']': {
+        e.preventDefault();
+        GalleryView.goToPage(GalleryView._page + 1);
+        break;
+      }
+    }
+  }
+});
+
+/* ═══════════════════════════════════════════════════
+   APP CONTROLLER
+═══════════════════════════════════════════════════ */
+const App = {
+  _prevPath: null,
+  _fromName: null,   // name of the card we entered (to restore focus on back)
+
+  /**
+   * Navigate to a path with optional URL parameters.
+   * @param {string} path - Directory or zip path
+   * @param {boolean} isPopState - True if triggered by browser back/forward
+   * @param {object} opts - URL parameters: { page, reader }
+   */
+  async navigate(path, isPopState = false, opts = {}) {
+    // If reader parameter is specified, open reader directly
+    if (opts.reader) {
+      const readerPath = opts.reader;
+      const lastSeg = readerPath.replace(/\/+$/, '').split('/').pop() || '';
+      const isZipPath = ZIP_EXTS.has(extOf(lastSeg));
+
+      if (!isPopState) {
+        const parts = readerPath.replace(/\/$/, '').split('/');
+        this._prevPath = parts.slice(0, -1).join('/') || '/';
+        this._fromName = parts[parts.length - 1] || null;
+      }
+      Reader.open(readerPath, isZipPath);
+      return;
+    }
+
+    // Determine if this path should open reader or gallery.
+    // A path IS a zip if its LAST path segment ends with a zip extension.
+    // Use extOf() on the last segment to avoid false-positives from parent dir names.
+    const lastSeg = path.replace(/\/+$/, '').split('/').pop() || '';
+    const isZipPath = ZIP_EXTS.has(extOf(lastSeg));
+
+    // Check if it's a leaf (zip = always reader; dir = try to determine by listing)
+    // Strategy: for zip paths, always open reader.
+    // For dir paths, check if first item is an image — if so, open as reader
+    // Actually we use a simpler heuristic: check if ANY image files exist at this path
+    // We'll load and check
+
+    if (isZipPath) {
+      // Open reader for zip
+      if (!isPopState) {
+        const parts = path.replace(/\/$/, '').split('/');
+        this._prevPath = parts.slice(0, -1).join('/') || '/';
+        this._fromName = parts[parts.length - 1] || null;
+      }
+      Reader.open(path, true);
+    } else {
+      // Load first page to decide: gallery (dir/zip items) or reader (image files)
+      try {
+        const data = await apiLs(path, { page: 1, page_size: 20 });
+        const hasDirOrZip = data.items.some(it => isDir(it.type) || isZip(it.type));
+        const hasImages = data.items.some(it => it.type === 'file' && isImage(it.name));
+
+        if (hasImages && !hasDirOrZip) {
+          // Pure image directory → open reader
+          if (!isPopState) {
+            const parts = path.replace(/\/$/, '').split('/');
+            this._prevPath = parts.slice(0, -1).join('/') || '/';
+            this._fromName = parts[parts.length - 1] || null;
+          }
+          Reader.open(path, false);
+        } else {
+          // Show as gallery (may also contain images which will be ignored at gallery level)
+          if (!isPopState) { this._prevPath = null; this._fromName = null; }
+          GalleryView.show(path, null, opts.page);
+        }
+      } catch (err) {
+        GalleryView.show(path, null, opts.page);
+      }
+    }
+  },
+
+  backToGallery() {
+    const galleryPath = this._prevPath || this._parentOf(Router.getPath());
+    // Pass the name we came from so Gallery can restore focus
+    const fromName = this._fromName;
+    this._fromName = null;
+    Router.pushWithFocus(galleryPath, fromName);
+  },
+
+  /** Directly show gallery at path, then focus card named focusName */
+  navigateToGallery(path, focusName) {
+    GalleryView.show(path, focusName);
+  },
+
+  _parentOf(path) {
+    const parts = path.replace(/\/$/, '').split('/');
+    parts.pop();
+    return parts.join('/') || '/';
+  },
+};
+
+/* ═══════════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════════ */
+GalleryView.init();
+Reader.init();
+Gallerize.init();
+// Parse URL params and navigate
+const params = Router.getParams();
+App.navigate(params.path, true, { page: params.page, reader: params.reader });
+</script>
+</body>
+</html>
