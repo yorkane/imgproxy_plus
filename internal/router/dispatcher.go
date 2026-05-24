@@ -36,6 +36,10 @@ func New(cfg *config.Config) *Dispatcher {
 func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	origPath := r.URL.Path
 	path := stripPrefix(d.cfg.URLPrefix, r.URL.Path)
+	if d.cfg.URLPrefix != "" && d.cfg.URLPrefix != "/" && origPath == path {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 	if path != origPath {
 		newURL := *r.URL
 		newURL.Path = path
@@ -70,7 +74,7 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/or-gallery" || path == "/img-editor" || path == "/img-sequence":
 		withAuth(d.cfg, static.Handler()).ServeHTTP(w, r)
 	case path == "/":
-		static.Handler().ServeHTTP(w, r)
+		withAuth(d.cfg, static.Handler()).ServeHTTP(w, r)
 	case strings.HasPrefix(path, "/libs/"):
 		static.Handler().ServeHTTP(w, r)
 	case strings.HasPrefix(path, "/js/"):

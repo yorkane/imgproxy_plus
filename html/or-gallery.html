@@ -5,112 +5,116 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Gallery</title>
   <link rel="stylesheet" href="or-gallery.css">
+  <script defer src="libs/alpinejs.min.js"></script>
 </head>
 <body>
-<div id="app">
+<div id="app" x-data="gallery" @keydown.window="onKeydown($event)">
   <!-- ─── Gallery Toolbar ─── -->
   <div id="toolbar">
-    <button class="btn" id="btn-back" title="返回上级 (B)">←</button>
-    <div class="breadcrumb"><span id="breadcrumb-text">/</span></div>
-    <button class="btn" id="btn-del-mode" title="删除模式">🗑</button>
+    <button class="btn" id="btn-back" x-show="path !== '/'" @click="goBack" title="返回上级 (B)">←</button>
+    <div class="breadcrumb"><span x-text="path">/</span></div>
+    <button class="btn" id="btn-del-mode" :class="{ active: delMode }" @click="toggleDelMode" title="删除模式">🗑</button>
   </div>
 
   <!-- ─── Gallery Grid ─── -->
   <div id="gallery-view">
-    <div id="gallery-grid"></div>
+    <div id="gallery-grid">
+      <template x-for="i in 4" :key="'sk-'+i">
+        <div class="card skeleton" x-show="loading"><div class="thumb-wrap"></div><div class="card-name skeleton"></div></div>
+      </template>
+      <template x-for="item in items" :key="item.path">
+        <div class="card" :data-name="item.name" :data-type="item.type" :data-path="item.path" @click="cardClick(item, $el)">
+          <div class="thumb-wrap">
+            <div class="placeholder" x-show="!item.coverLoaded" x-text="item.icon"></div>
+            <img loading="lazy" :alt="item.name" :src="item.cover || ''" :class="{ loading: !item.coverLoaded }" @load="item.coverLoaded = true" @error="item.coverError = true">
+          </div>
+          <div class="card-info">
+            <div class="card-name" x-text="item.name"></div>
+            <div class="card-meta" x-text="item.icon + ' ' + (item.sizeLabel || '')"></div>
+          </div>
+          <div class="del-btn" title="删除" @click.stop="deleteItem(item)">✕</div>
+        </div>
+      </template>
+    </div>
     <div id="gallery-sentinel"></div>
     <!-- Pagination -->
-    <div id="gallery-pagination" class="hidden">
-      <button class="btn" id="pg-first" title="首页">««</button>
-      <button class="btn" id="pg-prev" title="上一页">←</button>
-      <div class="page-info" id="pg-info">1 / 1</div>
-      <button class="btn" id="pg-next" title="下一页">→</button>
-      <button class="btn" id="pg-last" title="末页">»»</button>
+    <div id="gallery-pagination" x-show="showPagination">
+      <button class="btn" :disabled="page <= 1" @click="goToPage(1)" title="首页">««</button>
+      <button class="btn" :disabled="page <= 1" @click="goToPage(page - 1)" title="上一页">←</button>
+      <div class="page-info" x-text="page + ' / ' + (totalPages || 1)">1 / 1</div>
+      <button class="btn" :disabled="page >= totalPages" @click="goToPage(page + 1)" title="下一页">→</button>
+      <button class="btn" :disabled="page >= totalPages" @click="goToPage(totalPages)" title="末页">»»</button>
       <div class="page-jump">
-        <input type="number" id="pg-input" min="1" value="1">
-        <button class="btn" id="pg-go">Go</button>
+        <input type="number" min="1" :max="totalPages || 1" x-model.number="pageInput" @keydown.enter="goToPage(pageInput)">
+        <button class="btn" @click="goToPage(pageInput)">Go</button>
       </div>
     </div>
   </div>
 
   <!-- ─── Status (empty/error) ─── -->
-  <div id="status-msg">
-    <div class="status-icon" id="status-icon">📂</div>
-    <div class="status-text" id="status-text">空文件夹</div>
-    <div class="status-sub" id="status-sub"></div>
+  <div id="status-msg" :class="{ show: showStatus }">
+    <div class="status-icon" x-text="statusIcon">📂</div>
+    <div class="status-text" x-text="statusText">空文件夹</div>
+    <div class="status-sub" x-text="statusSub"></div>
   </div>
 
   <!-- ─── Reader View ─── -->
-  <div id="reader-view">
-    <div id="reader-toolbar">
-      <button class="btn" id="rbtn-back" title="返回 (B/Esc)">←</button>
-      <button class="btn" id="rbtn-double" title="单/双页">单页</button>
-      <button class="btn" id="rbtn-rtl" title="翻页方向">LTR→</button>
-      <button class="btn" id="rbtn-view" title="视图模式 (O)">Fit</button>
-      <button class="btn" id="rbtn-thumb" title="缩略图 (T)">📷</button>
-      <button class="btn" id="rbtn-rotate" title="旋转 (V)">🔄</button>
-      <span id="page-info" style="color:#ccc;font-size:12px;flex:1;text-align:center;white-space:nowrap;overflow:hidden"></span>
-      <button class="btn" id="rbtn-fs" title="全屏 (F)">⛶</button>
-      <button class="btn" id="rbtn-edit" title="在编辑器中打开 (E)">✏️ Editor</button>
-      <button class="btn" id="rbtn-seq" title="导出序列 (S)">📤 导出序列</button>
-      <button class="btn" id="rbtn-gallerize" title="整理为 Gallery (v1)">✨ Gallerize</button>
-      <button class="btn danger" id="rbtn-del" title="删除当前图 (Del)">🗑</button>
+  <div id="reader-view" :class="{ active: showReader }">
+    <div id="reader-toolbar" x-show="readerToolbarVisible">
+      <button class="btn" @click="readerBack" title="返回 (B/Esc)">←</button>
+      <button class="btn" :class="{ active: readerDouble }" x-text="readerDouble ? '双页' : '单页'" @click="readerToggle('double')" title="单/双页">单页</button>
+      <button class="btn" :class="{ active: readerRtl }" x-text="readerRtl ? '←RTL' : 'LTR→'" @click="readerToggle('rtl')" title="翻页方向">LTR→</button>
+      <button class="btn" :class="{ active: readerViewMode === 'orig' }" x-text="readerViewMode === 'orig' ? 'Orig' : 'Fit'" @click="readerCycleView" title="视图模式 (O)">Fit</button>
+      <button class="btn" :class="{ active: readerViewMode === 'thumb' }" @click="readerToggleThumb" title="缩略图 (T)">📷</button>
+      <button class="btn" :class="{ active: readerViewMode === 'rotate' }" @click="readerToggleRotate" title="旋转 (V)">🔄</button>
+      <span x-text="readerPageInfo" style="color:#ccc;font-size:12px;flex:1;text-align:center;white-space:nowrap;overflow:hidden"></span>
+      <button class="btn" :class="{ active: readerIsFs }" @click="readerToggleFs" title="全屏 (F)">⛶</button>
+      <button class="btn" @click="readerEdit" title="在编辑器中打开 (E)">✏️ Editor</button>
+      <button class="btn" @click="readerSeq" title="导出序列 (S)">📤 导出序列</button>
+      <button class="btn" @click="readerGallerize" title="整理为 Gallery (v1)">✨ Gallerize</button>
+      <button class="btn danger" x-show="readerViewMode !== 'thumb'" @click="readerDelete" title="删除当前图 (Del)">🗑</button>
     </div>
     <div id="page-canvas">
       <div class="spinner" id="reader-spinner"></div>
     </div>
   </div>
-</div>
-
 
 <!-- ─── OSD ─── -->
 <div id="osd"></div>
 
 <!-- ─── Gallerize Modal ─── -->
-<div id="gallerize-modal">
+<div id="gallerize-modal" :class="{ show: gzModal }" @click.self="gzClose">
   <div id="gallerize-box">
     <h3>✨ Gallerize
-      <button class="modal-close" id="gz-close">✕</button>
+      <button class="modal-close" @click="gzClose" :style="{ pointerEvents: gzRunning ? 'none' : '' }">✕</button>
     </h3>
 
-    <!-- Current path -->
     <div class="gz-path-row">
-      整理目录：<strong id="gz-path-display">/</strong>
+      整理目录：<strong x-text="gzPath">/</strong>
     </div>
 
-    <!-- Mode selector -->
     <div>
       <div class="gz-label" style="margin-bottom:6px">执行模式</div>
       <div class="gz-mode-row">
-        <button class="gz-mode-btn active" data-mode="local">🖥 Local</button>
-        <button class="gz-mode-btn" data-mode="remote">🌐 Remote</button>
+        <button class="gz-mode-btn" :class="{ active: gzMode === 'local' }" :disabled="gzRunning" @click="gzSetMode('local')">🖥 Local</button>
+        <button class="gz-mode-btn" :class="{ active: gzMode === 'remote' }" :disabled="gzRunning" @click="gzSetMode('remote')">🌐 Remote</button>
       </div>
     </div>
 
-    <!-- Remote config (hidden when local) -->
-    <div class="gz-remote-section" id="gz-remote-section">
+    <div class="gz-remote-section" :class="{ show: gzMode === 'remote' }" id="gz-remote-section">
       <div class="gz-label">远程服务地址</div>
-      <input class="gz-input" id="gz-remote-url" type="url"
-             placeholder="http://192.168.1.100:8080"
-             autocomplete="off" spellcheck="false">
+      <input class="gz-input" type="url" x-model="gzRemoteUrl" placeholder="http://192.168.1.100:8080" autocomplete="off" spellcheck="false">
       <div class="gz-hint">填写远端 imgproxy_plus 服务根地址，目录整理在本机执行，图片转换转发到远端 /api/img</div>
     </div>
 
-    <!-- Image conversion params -->
     <div>
       <div class="gz-label">图片转换参数（可选）</div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
-        <div>
-          <div class="gz-label" style="margin-top:0">宽度</div>
-          <input class="gz-input" id="gz-w" type="number" min="1" placeholder="2560">
-        </div>
-        <div>
-          <div class="gz-label" style="margin-top:0">高度</div>
-          <input class="gz-input" id="gz-h" type="number" min="1" placeholder="2560">
-        </div>
+        <div><div class="gz-label" style="margin-top:0">宽度</div><input class="gz-input" type="number" min="1" x-model.number="gzW" placeholder="2560"></div>
+        <div><div class="gz-label" style="margin-top:0">高度</div><input class="gz-input" type="number" min="1" x-model.number="gzH" placeholder="2560"></div>
       </div>
       <div style="margin-top:8px">
-        <select class="gz-input" id="gz-fit" style="height:auto;padding:6px">
+        <select class="gz-input" x-model="gzFit" style="height:auto;padding:6px">
           <option value="">保持默认 (contain)</option>
           <option value="contain">contain (包含)</option>
           <option value="cover">cover (覆盖)</option>
@@ -120,42 +124,172 @@
       </div>
       <div style="margin-top:8px">
         <div class="gz-label" style="margin-top:0">质量 (1-100)</div>
-        <input class="gz-input" id="gz-q" type="number" min="1" max="100" placeholder="90">
+        <input class="gz-input" type="number" min="1" max="100" x-model.number="gzQ" placeholder="90">
       </div>
     </div>
 
-    <!-- Concurrency (only for remote) -->
-    <div class="gz-remote-section" id="gz-concurrency-section">
+    <div class="gz-remote-section" :class="{ show: gzMode === 'remote' }" id="gz-concurrency-section">
       <div class="gz-label">并发请求数</div>
-      <input class="gz-input" id="gz-concurrency" type="number" min="1" max="64" value="12">
+      <input class="gz-input" type="number" min="1" max="64" x-model.number="gzConcurrency">
       <div class="gz-hint">A 服务器同时向 B 服务器发送的最大并发数（默认 12）</div>
     </div>
 
-    <!-- Progress bar (shown during processing) -->
-    <div class="gz-progress" id="gz-progress">
-      <div class="gz-progress-text" id="gz-progress-text">正在处理…</div>
+    <div class="gz-progress" :class="{ show: gzProgressShow }" id="gz-progress">
+      <div class="gz-progress-text" x-text="gzProgressText">正在处理…</div>
       <div class="gz-progress-bar-wrap">
         <div class="gz-progress-bar" id="gz-progress-bar" style="width:0%"></div>
       </div>
     </div>
 
-    <!-- Result (shown after done) -->
-    <div class="gz-result" id="gz-result">
-      <div class="gz-result-summary" id="gz-result-summary"></div>
-      <div class="gz-stat-row" id="gz-stat-row"></div>
-      <div class="gz-errors" id="gz-errors" style="display:none"></div>
+    <div class="gz-result" :class="{ show: gzResultShow }" id="gz-result">
+      <div class="gz-result-summary" x-html="gzResultSummary" :class="gzResultClass" id="gz-result-summary"></div>
+      <div class="gz-stat-row" x-html="gzResultStats" id="gz-stat-row"></div>
+      <div class="gz-errors" x-show="gzResultErrorsShow" x-html="gzResultErrors" id="gz-errors"></div>
     </div>
 
-    <!-- Action buttons -->
     <div class="gz-actions">
-      <button class="gz-btn" id="gz-cancel">取消</button>
-      <button class="gz-btn primary" id="gz-run">开始整理</button>
+      <button class="gz-btn" :disabled="gzRunning" x-text="gzCancelText" @click="gzClose">取消</button>
+      <button class="gz-btn primary" :disabled="gzRunning" x-text="gzRunText" @click="gzRun">开始整理</button>
     </div>
   </div>
+</div>
 </div>
 
 <script>
 'use strict';
+
+/* ═══════════════════════════════════════════════════
+   ALPINE INIT
+═══════════════════════════════════════════════════ */
+document.addEventListener('alpine:init', () => {
+  Alpine.data('gallery', () => ({
+    path: '/',
+    delMode: false,
+    showStatus: false,
+    statusIcon: '📂',
+    statusText: '空文件夹',
+    statusSub: '',
+    items: [],
+    loading: false,
+    page: 1,
+    totalPages: 0,
+    showPagination: false,
+    pageInput: 1,
+
+    init() {
+      window._g = this;
+    },
+
+    goBack() { GalleryView.goBack(); },
+    toggleDelMode() { GalleryView.toggleDelMode(); },
+
+    showReader: false,
+    readerDouble: false,
+    readerRtl: false,
+    readerViewMode: 'fit',
+    readerPageInfo: '',
+    readerToolbarVisible: true,
+    readerIsFs: false,
+
+    goToPage(p) {
+      p = parseInt(p, 10);
+      if (isNaN(p) || p < 1 || p > this.totalPages || p === this.page) return;
+      GalleryView.goToPage(p);
+    },
+
+    readerBack() { Reader.close(); },
+    readerToggle(mode) { if (mode === 'double') Reader.toggleDouble(); else Reader.toggleRtl(); },
+    readerCycleView() { Reader.cycleViewMode(); },
+    readerToggleThumb() { Reader.toggleThumb(); },
+    readerToggleRotate() { Reader.toggleRotate(); },
+    readerToggleFs() { Reader.toggleFullscreen(); },
+    readerEdit() { Reader.openInEditor(); },
+    readerSeq() { Reader.openInSequence(); },
+    readerGallerize() { Gallerize.open(); },
+    readerDelete() { Reader.deleteCurrentPage(); },
+
+    gzModal: false,
+    gzMode: 'local',
+    gzRemoteUrl: '',
+    gzW: null, gzH: null, gzFit: '', gzQ: null,
+    gzConcurrency: 12,
+    gzPath: '/',
+    gzRunning: false,
+    gzProgressShow: false,
+    gzProgressText: '',
+    gzResultShow: false,
+    gzResultSummary: '',
+    gzResultClass: '',
+    gzResultStats: '',
+    gzResultErrors: '',
+    gzResultErrorsShow: false,
+    gzRunText: '开始整理',
+    gzCancelText: '取消',
+
+    gzOpen() { Gallerize.open(); },
+    gzClose() { Gallerize.close(); },
+    gzSetMode(m) { Gallerize.setMode(m); },
+    gzRun() { Gallerize.run(); },
+
+    cardClick(item, el) {
+      const cards = GalleryView._cards();
+      GalleryView._kbIdx = cards.indexOf(el);
+      Router.push(item.path);
+    },
+
+    async deleteItem(item) {
+      const isFolder = item.type === 'dir';
+      const confirmed = await showConfirm(
+        '删除确认',
+        `将删除 "${item.name}"${isFolder ? ' 及其所有内容' : ''}，此操作不可撤销。`
+      );
+      if (!confirmed) return;
+      try {
+        await apiRm(item.path);
+        this.items = this.items.filter(it => it.path !== item.path);
+        showOsd('已删除');
+      } catch (err) {
+        showOsd('删除失败: ' + err.message, 3000);
+      }
+    },
+
+    onKeydown(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (this.showReader) {
+        switch (e.key) {
+          case 'ArrowLeft': case 'ArrowUp': e.preventDefault(); Reader.navigate(-1); break;
+          case 'ArrowRight': case 'ArrowDown': e.preventDefault(); Reader.navigate(1); break;
+          case 'Home': e.preventDefault(); Reader.gotoFirst(); break;
+          case 'End': e.preventDefault(); Reader.gotoLast(); break;
+          case 'Escape': case 'b': case 'B': Reader.close(); break;
+          case 'f': case 'F': Reader.toggleFullscreen(); break;
+          case 'o': case 'O': Reader.cycleViewMode(); break;
+          case 't': case 'T': Reader.toggleThumb(); break;
+          case 'v': case 'V': Reader.toggleRotate(); break;
+          case 'Delete': Reader.deleteCurrentPage(); break;
+          case 'e': case 'E': Reader.openInEditor(); break;
+          case 's': case 'S': Reader.openInSequence(); break;
+          case '[': Reader.goToPrevGallery(); break;
+          case ']': Reader.goToNextGallery(); break;
+        }
+      } else {
+        switch (e.key) {
+          case 'ArrowRight': e.preventDefault(); GalleryView.kbMove(1); break;
+          case 'ArrowLeft': e.preventDefault(); GalleryView.kbMove(-1); break;
+          case 'ArrowDown': e.preventDefault(); GalleryView.kbMove(GalleryView._colCount()); break;
+          case 'ArrowUp': e.preventDefault(); GalleryView.kbMove(-GalleryView._colCount()); break;
+          case 'Enter': e.preventDefault(); GalleryView.kbEnter(); break;
+          case 'Delete': case 'Backspace': e.preventDefault(); GalleryView.kbDelete(); break;
+          case 'b': case 'B': GalleryView.goBack(); break;
+          case '[': e.preventDefault(); GalleryView.goToPage(GalleryView._page - 1); break;
+          case ']': e.preventDefault(); GalleryView.goToPage(GalleryView._page + 1); break;
+        }
+      }
+    },
+  }));
+});
+
 /* ═══════════════════════════════════════════════════
    UTILS
 ═══════════════════════════════════════════════════ */
@@ -168,6 +302,8 @@ const IMG_EXTS = new Set([
 ]);
 const ZIP_EXTS = new Set(['zip','cbz','epub']);
 const COVER_RE = /^(\d{0,6}[-_\s]?)cover/i;
+const BASE = (() => { const b = document.querySelector('base'); return b ? b.href.replace(/\/+$/, '') : ''; })();
+function apiUrl(p) { return BASE + p; }
 
 function extOf(name) {
   const i = name.lastIndexOf('.');
@@ -218,15 +354,15 @@ function zipFileUrl(archivePath, internalPath) {
   // archivePath like /foo/bar.cbz, internalPath like cover.jpg or ch1/01.jpg
   // internalPath may contain slashes (sub-dirs), encode each segment separately
   const encodedInternal = internalPath.split('/').map(s => encodeURIComponent(s)).join('/');
-  return '/zip' + encodeFilePath(archivePath) + '/' + encodedInternal;
+  return apiUrl('/zip' + encodeFilePath(archivePath) + '/' + encodedInternal);
 }
 
 /** Build resized reader URL via /img/ for faster loading */
 function buildReaderUrl(rawUrl, viewMode) {
   if (viewMode === 'orig') return rawUrl;
-  if (rawUrl.startsWith('/zip')) return rawUrl;
-  const p = rawUrl.replace(/^\/webdav/, '');
-  return '/img' + p + '?w=1920&h=1920&fit=contain&q=85';
+  if (rawUrl.startsWith(apiUrl('/zip'))) return rawUrl;
+  const p = rawUrl.replace('/webdav', '');
+  return apiUrl('/img' + p + '?w=1920&h=1920&fit=contain&q=85');
 }
 
 function encodeFilePath(p) {
@@ -255,7 +391,7 @@ async function apiLs(path, opts = {}) {
     page_size: String(opts.page_size ?? 50),
   });
   // Encode path segments to handle special chars like # in directory names
-  const url = '/api/ls' + encodeFilePath(path.startsWith('/') ? path : '/' + path) + '?' + params;
+  const url = apiUrl('/api/ls' + encodeFilePath(path.startsWith('/') ? path : '/' + path)) + '?' + params;
   const res = await fetch(url);
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
@@ -266,7 +402,7 @@ async function apiLs(path, opts = {}) {
 
 async function apiRm(path) {
   // Encode path segments to handle special chars like # in directory names
-  const res = await fetch('/api/rm' + encodeFilePath(path.startsWith('/') ? path : '/' + path), { method: 'DELETE' });
+  const res = await fetch(apiUrl('/api/rm' + encodeFilePath(path.startsWith('/') ? path : '/' + path)), { method: 'DELETE' });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.message || `HTTP ${res.status}`);
@@ -463,7 +599,6 @@ const Gallerize = {
   _running: false,
 
   init() {
-    // Restore persisted settings
     this._mode      = localStorage.getItem(this.LS_MODE) || 'local';
     this._remoteUrl = localStorage.getItem(this.LS_REMOTE) || '';
     this._imgParams = {
@@ -474,49 +609,7 @@ const Gallerize = {
     };
     this._concurrency = parseInt(localStorage.getItem(this.LS_CONCURRENCY) || '12', 10);
 
-    // Wire reader toolbar button (button is now in reader-view toolbar)
-    document.getElementById('rbtn-gallerize').addEventListener('click', () => this.open());
-
-    // Wire modal close buttons
-    document.getElementById('gz-close').addEventListener('click', () => this.close());
-    document.getElementById('gz-cancel').addEventListener('click', () => this.close());
-    document.getElementById('gallerize-modal').addEventListener('click', e => {
-      if (e.target === document.getElementById('gallerize-modal')) this.close();
-    });
-
-    // Mode selector
-    document.querySelectorAll('.gz-mode-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this._mode = btn.dataset.mode;
-        localStorage.setItem(this.LS_MODE, this._mode);
-        this._syncModeUI();
-      });
-    });
-
-    // Remote URL input — persist on change
-    document.getElementById('gz-remote-url').addEventListener('input', e => {
-      this._remoteUrl = e.target.value.trim();
-      localStorage.setItem(this.LS_REMOTE, this._remoteUrl);
-    });
-
-    // Image params inputs — persist on change
-    ['w','h','fit','q'].forEach(key => {
-      const el = document.getElementById('gz-' + key);
-      el.addEventListener('input', e => {
-        const val = e.target.value.trim();
-        this._imgParams[key] = val ? val : null;
-        localStorage.setItem(this['LS_' + key.toUpperCase()], val || '');
-      });
-    });
-
-    // Concurrency input — persist on change
-    document.getElementById('gz-concurrency').addEventListener('input', e => {
-      this._concurrency = parseInt(e.target.value, 10) || 12;
-      localStorage.setItem(this.LS_CONCURRENCY, String(this._concurrency));
-    });
-
-    // Run button
-    document.getElementById('gz-run').addEventListener('click', () => this.run());
+    // All UI event wiring now handled by Alpine
   },
 
   // Resolve the directory to gallerize: always the directory Reader is currently browsing.
@@ -530,52 +623,44 @@ const Gallerize = {
     return p;
   },
 
+  setMode(m) {
+    this._mode = m;
+    localStorage.setItem(this.LS_MODE, m);
+    window._g.gzMode = m;
+  },
+
   open() {
     const path = this._readerDir();
-    document.getElementById('gz-path-display').textContent = path;
+    window._g.gzPath = path;
+    window._g.gzRemoteUrl = this._remoteUrl;
+    window._g.gzW = this._imgParams.w || null;
+    window._g.gzH = this._imgParams.h || null;
+    window._g.gzFit = this._imgParams.fit || '';
+    window._g.gzQ = this._imgParams.q || null;
+    window._g.gzConcurrency = this._concurrency;
+    window._g.gzMode = this._mode;
 
-    // Restore UI state
-    this._syncModeUI();
-    document.getElementById('gz-remote-url').value = this._remoteUrl;
+    window._g.gzRunning = false;
+    window._g.gzProgressShow = false;
+    window._g.gzResultShow = false;
+    window._g.gzRunText = '开始整理';
+    window._g.gzCancelText = '取消';
 
-    // Restore image params
-    document.getElementById('gz-w').value = this._imgParams.w || '';
-    document.getElementById('gz-h').value = this._imgParams.h || '';
-    document.getElementById('gz-fit').value = this._imgParams.fit || '';
-    document.getElementById('gz-q').value = this._imgParams.q || '';
-    document.getElementById('gz-concurrency').value = String(this._concurrency);
-
-    // Reset progress & result
-    this._setRunning(false);
-    document.getElementById('gz-progress').classList.remove('show');
-    document.getElementById('gz-result').classList.remove('show');
-    document.getElementById('gz-run').textContent = '开始整理';
-    document.getElementById('gz-run').disabled = false;
-
-    document.getElementById('gallerize-modal').classList.add('show');
+    window._g.gzModal = true;
   },
 
   close() {
-    if (this._running) return; // prevent close while running
-    document.getElementById('gallerize-modal').classList.remove('show');
+    if (this._running) return;
+    window._g.gzModal = false;
   },
 
   _syncModeUI() {
-    document.querySelectorAll('.gz-mode-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.mode === this._mode);
-    });
-    const isRemote = this._mode === 'remote';
-    document.getElementById('gz-remote-section').classList.toggle('show', isRemote);
-    document.getElementById('gz-concurrency-section').classList.toggle('show', isRemote);
+    window._g.gzMode = this._mode;
   },
 
   _setRunning(v) {
     this._running = v;
-    document.getElementById('gz-run').disabled = v;
-    document.getElementById('gz-cancel').disabled = v;
-    document.getElementById('gz-close').style.pointerEvents = v ? 'none' : '';
-    // Disable mode buttons during run
-    document.querySelectorAll('.gz-mode-btn').forEach(btn => { btn.disabled = v; });
+    window._g.gzRunning = v;
   },
 
   // Animate progress bar (fake progress until we get a response)
@@ -599,11 +684,24 @@ const Gallerize = {
   async run() {
     const path = this._readerDir();
 
-    // Validate remote URL if needed
+    // Sync Alpine state back to internal state
+    this._remoteUrl = window._g.gzRemoteUrl;
+    this._concurrency = window._g.gzConcurrency;
+    this._imgParams.w = window._g.gzW;
+    this._imgParams.h = window._g.gzH;
+    this._imgParams.fit = window._g.gzFit;
+    this._imgParams.q = window._g.gzQ;
+
+    // Persist to localStorage
+    localStorage.setItem(this.LS_REMOTE, this._remoteUrl);
+    localStorage.setItem(this.LS_W, String(this._imgParams.w || ''));
+    localStorage.setItem(this.LS_H, String(this._imgParams.h || ''));
+    localStorage.setItem(this.LS_FIT, this._imgParams.fit || '');
+    localStorage.setItem(this.LS_Q, String(this._imgParams.q || ''));
+    localStorage.setItem(this.LS_CONCURRENCY, String(this._concurrency));
+
     if (this._mode === 'remote') {
-      const url = this._remoteUrl.trim();
-      if (!url) {
-        document.getElementById('gz-remote-url').focus();
+      if (!this._remoteUrl.trim()) {
         showOsd('请填写远程服务地址', 2000);
         return;
       }
@@ -611,37 +709,32 @@ const Gallerize = {
 
     this._setRunning(true);
 
-    // Show progress
-    document.getElementById('gz-result').classList.remove('show');
-    const progressEl = document.getElementById('gz-progress');
-    progressEl.classList.add('show');
-    document.getElementById('gz-progress-text').textContent = '正在处理，请稍候…';
-    document.getElementById('gz-run').textContent = '处理中…';
+    window._g.gzResultShow = false;
+    window._g.gzProgressShow = true;
+    window._g.gzProgressText = '正在处理，请稍候…';
+    window._g.gzRunText = '处理中…';
     this._startFakeProgress();
 
     try {
       const result = await this._callApi(path);
       this._finishProgress(true);
-      document.getElementById('gz-progress-text').textContent = '完成';
+      window._g.gzProgressText = '完成';
       this._showResult(result);
 
-      // Refresh gallery if run succeeded and not skipped
       if (result.ok && !result.skipped) {
         setTimeout(() => {
-          GalleryView.grid.innerHTML = '';
+          window._g.items = [];
           GalleryView.loadPage();
         }, 800);
       }
     } catch (err) {
       this._finishProgress(false);
-      document.getElementById('gz-progress-text').textContent = '请求失败: ' + err.message;
+      window._g.gzProgressText = '请求失败: ' + err.message;
       this._showError(err.message);
     } finally {
       this._setRunning(false);
-      document.getElementById('gz-run').textContent = '再次执行';
-      document.getElementById('gz-run').disabled = false;
-      document.getElementById('gz-cancel').textContent = '关闭';
-      document.getElementById('gz-cancel').disabled = false;
+      window._g.gzRunText = '再次执行';
+      window._g.gzCancelText = '关闭';
     }
   },
 
@@ -663,7 +756,7 @@ const Gallerize = {
     if (this._imgParams.fit) bodyObj.fit = this._imgParams.fit;
     if (this._imgParams.q) bodyObj.q = parseInt(this._imgParams.q, 10);
 
-    const res = await fetch('/api/gallerize', {
+    const res = await fetch(apiUrl('/api/gallerize'), {
       method: 'POST',
       headers,
       body: JSON.stringify(bodyObj),
@@ -679,44 +772,35 @@ const Gallerize = {
   },
 
   _showResult(r) {
-    const summaryEl = document.getElementById('gz-result-summary');
-    const statEl    = document.getElementById('gz-stat-row');
-    const errEl     = document.getElementById('gz-errors');
-
     if (r.skipped) {
-      summaryEl.className = 'gz-result-summary ok';
-      summaryEl.textContent = '✓ 已跳过（目录已完成整理，无需重复处理）';
-      statEl.innerHTML = '';
-      errEl.style.display = 'none';
+      window._g.gzResultClass = 'gz-result-summary ok';
+      window._g.gzResultSummary = '✓ 已跳过（目录已完成整理，无需重复处理）';
+      window._g.gzResultStats = '';
+      window._g.gzResultErrorsShow = false;
     } else if (r.ok) {
-      summaryEl.className = 'gz-result-summary ok';
-      summaryEl.textContent = '✓ 整理完成';
+      window._g.gzResultClass = 'gz-result-summary ok';
+      window._g.gzResultSummary = '✓ 整理完成';
 
-      // Parse steps from the nested object returned by gallerize.lua
       const steps = r.steps || {};
       const parts = [];
 
-      // move_non_images step
       const moveStep = steps.move_non_images;
       if (moveStep && moveStep.count !== undefined) {
         parts.push(`<span>移出非图片 <strong>${moveStep.count}</strong> 个</span>`);
       }
 
-      // flatten step
       const flatStep = steps.flatten;
       if (flatStep && flatStep.dirs !== undefined) {
         const dirCount = Array.isArray(flatStep.dirs) ? flatStep.dirs.length : flatStep.dirs;
         parts.push(`<span>扁平化目录 <strong>${dirCount}</strong> 个</span>`);
       }
 
-      // promote step
       const promoteStep = steps.promote;
       if (promoteStep && promoteStep.performed) {
         const dirName = promoteStep.dir ? ` (${promoteStep.dir})` : '';
         parts.push(`<span>单目录提升${escHtml(dirName)}</span>`);
       }
 
-      // covers step — object: { "dirName": {generated, details}, ... }
       const coversStep = steps.covers;
       if (coversStep) {
         let coverOk = 0, coverFail = 0;
@@ -727,7 +811,6 @@ const Gallerize = {
         parts.push(`<span>封面 <strong>${coverOk}</strong> 个${coverFail ? `（失败 ${coverFail}）` : ''}</span>`);
       }
 
-      // convert step — {processed, skipped, errors}
       const convStep = steps.convert;
       if (convStep) {
         if (convStep.processed !== undefined)
@@ -736,37 +819,35 @@ const Gallerize = {
           parts.push(`<span>跳过 <strong>${convStep.skipped}</strong> 张</span>`);
       }
 
-      statEl.innerHTML = parts.join('');
+      window._g.gzResultStats = parts.join('');
 
-      // Errors from convert step
       const errors = (convStep && convStep.errors) || r.errors || [];
       if (errors.length) {
-        errEl.style.display = '';
-        errEl.innerHTML = errors.map(e => {
+        window._g.gzResultErrorsShow = true;
+        window._g.gzResultErrors = errors.map(e => {
           const src = e.file || e.src || '';
           const msg = e.error || String(e);
           return `<div>⚠ ${escHtml(src)}: ${escHtml(msg)}</div>`;
         }).join('');
       } else {
-        errEl.style.display = 'none';
+        window._g.gzResultErrorsShow = false;
       }
     } else {
-      summaryEl.className = 'gz-result-summary err';
-      summaryEl.textContent = '✗ 失败: ' + (r.message || '未知错误');
-      statEl.innerHTML = '';
-      errEl.style.display = 'none';
+      window._g.gzResultClass = 'gz-result-summary err';
+      window._g.gzResultSummary = '✗ 失败: ' + (r.message || '未知错误');
+      window._g.gzResultStats = '';
+      window._g.gzResultErrorsShow = false;
     }
 
-    document.getElementById('gz-result').classList.add('show');
+    window._g.gzResultShow = true;
   },
 
   _showError(msg) {
-    const summaryEl = document.getElementById('gz-result-summary');
-    summaryEl.className = 'gz-result-summary err';
-    summaryEl.textContent = '✗ ' + msg;
-    document.getElementById('gz-stat-row').innerHTML = '';
-    document.getElementById('gz-errors').style.display = 'none';
-    document.getElementById('gz-result').classList.add('show');
+    window._g.gzResultClass = 'gz-result-summary err';
+    window._g.gzResultSummary = '✗ ' + msg;
+    window._g.gzResultStats = '';
+    window._g.gzResultErrorsShow = false;
+    window._g.gzResultShow = true;
   },
 };
 
@@ -857,7 +938,6 @@ const GalleryView = {
   grid: document.getElementById('gallery-grid'),
   sentinel: document.getElementById('gallery-sentinel'),
   toolbar: document.getElementById('toolbar'),
-  pagination: null, // set in init()
 
   _path: '/',
   _page: 1,
@@ -882,23 +962,7 @@ const GalleryView = {
   _PAGE_CACHE_MAX: 20,
 
   init() {
-    document.getElementById('btn-back').addEventListener('click', () => this.goBack());
-    document.getElementById('btn-del-mode').addEventListener('click', () => this.toggleDelMode());
-
-    // Pagination elements
-    this.pagination = document.getElementById('gallery-pagination');
-    document.getElementById('pg-first').addEventListener('click', () => this.goToPage(1));
-    document.getElementById('pg-prev').addEventListener('click', () => this.goToPage(this._page - 1));
-    document.getElementById('pg-next').addEventListener('click', () => this.goToPage(this._page + 1));
-    document.getElementById('pg-last').addEventListener('click', () => this.goToPage(this._totalPages));
-    document.getElementById('pg-go').addEventListener('click', () => {
-      const input = document.getElementById('pg-input');
-      const page = parseInt(input.value, 10);
-      if (page >= 1 && page <= this._totalPages) this.goToPage(page);
-    });
-    document.getElementById('pg-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') document.getElementById('pg-go').click();
-    });
+    // btn-back, btn-del-mode, pagination now handled by Alpine
 
     // Click on grid clears kb-focus
     this.grid.addEventListener('click', () => {});
@@ -1014,17 +1078,16 @@ const GalleryView = {
       this._page = savedPage || 1;
     }
 
-    this.grid.innerHTML = '';
+    window._g.items = [];
     this.el.scrollTop = 0;
 
-    document.getElementById('btn-del-mode').classList.remove('active');
     this.grid.classList.remove('del-mode');
-    document.getElementById('breadcrumb-text').textContent = path;
-    document.getElementById('btn-back').style.display = path === '/' ? 'none' : '';
+    window._g.path = path;
+    window._g.delMode = false;
+    window._g.showStatus = false;
 
     this.el.classList.remove('hidden');
-    document.getElementById('reader-view').classList.remove('active');
-    document.getElementById('status-msg').classList.remove('show');
+    window._g.showReader = false;
     document.getElementById('toolbar').style.display = '';
 
     // Update URL with current page
@@ -1056,7 +1119,7 @@ const GalleryView = {
   goToPage(page) {
     if (page < 1 || page > this._totalPages || page === this._page) return;
     this._page = page;
-    this.grid.innerHTML = '';
+    window._g.items = [];
     this.el.scrollTop = 0;
     this._kbIdx = -1;
     this._focusName = null;
@@ -1074,124 +1137,68 @@ const GalleryView = {
     if (this._loading) return;
 
     this._loading = true;
-    this._appendSkeletons(4);
+    window._g.loading = true;
 
     try {
       const data = await apiLs(this._path, { page: this._page, page_size: this._pageSize });
       this._total = data.total;
       this._totalPages = Math.ceil(data.total / this._pageSize);
 
-      // Remove skeletons
-      this.grid.querySelectorAll('.card.skeleton').forEach(el => el.remove());
-
-      // Filter: only dir and zip
       const items = data.items.filter(it => isDir(it.type) || isZip(it.type));
-      items.forEach(it => this._appendCard(it));
+      const galleryItems = items.map(it => ({
+        name: it.name, type: it.type,
+        path: joinPath(this._path, it.name),
+        isZip: isZip(it.type),
+        icon: isZip(it.type) ? '🗜️' : '📁',
+        sizeLabel: isZip(it.type) ? fmtSize(it.size) : '',
+        cover: null, coverLoaded: false, coverError: false,
+      }));
+      window._g.loading = false;
+      window._g.items = galleryItems;
+
+      setTimeout(() => {
+        this.grid.querySelectorAll('.card:not(.skeleton)').forEach(card => {
+          this._coverObserver.observe(card);
+        });
+      }, 50);
 
       if (this._page === 1 && items.length === 0) {
         this._showEmpty();
-        this.pagination.classList.add('hidden');
+        window._g.showPagination = false;
       } else {
         this._updatePagination();
-        this.pagination.classList.remove('hidden');
       }
 
-      // Restore focus to the card we came from
       if (this._focusName) {
-        const cards = this._cards();
-        const idx = cards.findIndex(c => c.dataset.name === this._focusName);
-        if (idx >= 0) {
-          requestAnimationFrame(() => this._setFocus(idx, true));
-        }
-        this._focusName = null;
+        requestAnimationFrame(() => {
+          const cards = this._cards();
+          const idx = cards.findIndex(c => c.dataset.name === this._focusName);
+          if (idx >= 0) this._setFocus(idx, true);
+          this._focusName = null;
+        });
       }
 
     } catch (err) {
-      this.grid.querySelectorAll('.card.skeleton').forEach(el => el.remove());
+      window._g.loading = false;
+      window._g.items = [];
+      window._g.showPagination = false;
       this._showError(err.message);
-      this.pagination.classList.add('hidden');
     } finally {
       this._loading = false;
     }
   },
 
   _updatePagination() {
-    document.getElementById('pg-info').textContent = `${this._page} / ${this._totalPages || 1}`;
-    document.getElementById('pg-input').value = this._page;
-    document.getElementById('pg-input').max = this._totalPages;
-    document.getElementById('pg-first').disabled = this._page <= 1;
-    document.getElementById('pg-prev').disabled = this._page <= 1;
-    document.getElementById('pg-next').disabled = this._page >= this._totalPages;
-    document.getElementById('pg-last').disabled = this._page >= this._totalPages;
-  },
-
-  _appendSkeletons(n) {
-    for (let i = 0; i < n; i++) {
-      const el = document.createElement('div');
-      el.className = 'card skeleton';
-      el.innerHTML = '<div class="thumb-wrap"></div><div class="card-name skeleton"></div>';
-      this.grid.appendChild(el);
-    }
-  },
-
-  _appendCard(item) {
-    const isZipItem = isZip(item.type);
-    const icon = isZipItem ? '🗜️' : '📁';
-
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.dataset.name = item.name;
-    card.dataset.type = item.type;
-    card.dataset.path = joinPath(this._path, item.name);
-    card.innerHTML = `
-      <div class="thumb-wrap">
-        <div class="placeholder">${icon}</div>
-        <img class="loading" alt="" loading="lazy">
-      </div>
-      <div class="card-info">
-        <div class="card-name">${escHtml(item.name)}</div>
-        <div class="card-meta">${icon} ${isZipItem ? fmtSize(item.size) : ''}</div>
-      </div>
-      <div class="del-btn" title="删除">✕</div>
-    `;
-
-    // Click → navigate
-    card.addEventListener('click', e => {
-      if (e.target.closest('.del-btn')) return;
-      // Sync kb focus index so subsequent keyboard nav starts from here
-      const cards = this._cards();
-      this._kbIdx = cards.indexOf(card);
-      Router.push(card.dataset.path);
-    });
-
-    // Delete button
-    card.querySelector('.del-btn').addEventListener('click', async e => {
-      e.stopPropagation();
-      const name = item.name;
-      const confirmed = await showConfirm(
-        '删除确认',
-        `将删除 "${name}"${isDir(item.type) ? ' 及其所有内容' : ''}，此操作不可撤销。`
-      );
-      if (!confirmed) return;
-      try {
-        await apiRm(card.dataset.path);
-        card.remove();
-        showOsd('已删除');
-      } catch (err) {
-        showOsd('删除失败: ' + err.message, 3000);
-      }
-    });
-
-    this.grid.appendChild(card);
-
-    // Observe for cover lazy load
-    this._coverObserver.observe(card);
+    window._g.page = this._page;
+    window._g.totalPages = this._totalPages || 1;
+    window._g.pageInput = this._page;
+    window._g.showPagination = true;
   },
 
   async _loadCover(card) {
     const path = card.dataset.path;
     const type = card.dataset.type;
-    const img = card.querySelector('img');
+    const name = card.dataset.name;
 
     const result = await fetchCoverItem(path);
     if (!result) return;
@@ -1208,32 +1215,21 @@ const GalleryView = {
       const internalDir = zipBoundary > 0 ? coverPath.slice(zipBoundary).replace(/^\/+/, '') : '';
       const internalPath = internalDir ? internalDir + '/' + coverItem.name : coverItem.name;
       const encodedInternal = internalPath.split('/').map(s => encodeURIComponent(s)).join('/');
-      url = '/zip' + encodeFilePath(path) + '/' + encodedInternal;
+      url = apiUrl('/zip' + encodeFilePath(path) + '/' + encodedInternal);
     } else {
-      // 普通目录封面走 /img/ 做 vips 缩略图（360px 宽，cover 模式）
       const rawUrl = fileUrl(coverPath, coverItem.name);
-      url = '/img' + rawUrl + '?w=360&h=504&fit=cover&q=82';
+      url = apiUrl('/img' + rawUrl + '?w=360&h=504&fit=cover&q=82');
     }
 
-    img.onload = () => { img.classList.remove('loading'); };
-    img.onerror = () => {
-      // vips 缩略图失败时回退到原图
-      const fallback = fileUrl(coverPath, coverItem.name);
-      if (img.src !== fallback) {
-        // Clear onerror to prevent infinite retry loop
-        img.onerror = null;
-        img.src = fallback;
-      } else {
-        // 原图也失败，移除图片元素
-        img.remove();
-      }
-    };
-    img.src = url;
+    const alpineItem = window._g.items.find(it => it.name === name && it.path === path);
+    if (alpineItem) {
+      alpineItem.cover = url;
+    }
   },
 
   toggleDelMode() {
     this._delMode = !this._delMode;
-    document.getElementById('btn-del-mode').classList.toggle('active', this._delMode);
+    window._g.delMode = this._delMode;
     this.grid.classList.toggle('del-mode', this._delMode);
   },
 
@@ -1246,20 +1242,18 @@ const GalleryView = {
   },
 
   _showEmpty() {
-    const s = document.getElementById('status-msg');
-    document.getElementById('status-icon').textContent = '📂';
-    document.getElementById('status-text').textContent = '这里什么都没有';
-    document.getElementById('status-sub').textContent = '没有找到图片目录或压缩包';
-    s.classList.add('show');
+    window._g.showStatus = true;
+    window._g.statusIcon = '📂';
+    window._g.statusText = '这里什么都没有';
+    window._g.statusSub = '没有找到图片目录或压缩包';
     this.el.classList.add('hidden');
   },
 
   _showError(msg) {
-    const s = document.getElementById('status-msg');
-    document.getElementById('status-icon').textContent = '⚠️';
-    document.getElementById('status-text').textContent = '加载失败';
-    document.getElementById('status-sub').textContent = msg;
-    s.classList.add('show');
+    window._g.showStatus = true;
+    window._g.statusIcon = '⚠️';
+    window._g.statusText = '加载失败';
+    window._g.statusSub = msg;
     this.el.classList.add('hidden');
   },
 };
@@ -1417,17 +1411,7 @@ const Reader = {
   },
 
   init() {
-    // Button wiring
-    document.getElementById('rbtn-back').onclick = () => this.close();
-    document.getElementById('rbtn-double').onclick = () => this.toggleDouble();
-    document.getElementById('rbtn-rtl').onclick = () => this.toggleRtl();
-    document.getElementById('rbtn-view').onclick = () => this.cycleViewMode();
-    document.getElementById('rbtn-thumb').onclick = () => this.toggleThumb();
-    document.getElementById('rbtn-rotate').onclick = () => this.toggleRotate();
-    document.getElementById('rbtn-fs').onclick = () => this.toggleFullscreen();
-    document.getElementById('rbtn-del').onclick = () => this.deleteCurrentPage();
-    document.getElementById('rbtn-edit').onclick = () => this.openInEditor();
-    document.getElementById('rbtn-seq').onclick = () => this.openInSequence();
+    // Reader buttons now handled by Alpine @click
 
     // Canvas click zone
     this.canvas.addEventListener('click', e => this._handleCanvasClick(e));
@@ -1538,9 +1522,11 @@ const Reader = {
 
     // Switch to reader
     document.getElementById('gallery-view').classList.add('hidden');
-    document.getElementById('status-msg').classList.remove('show');
+    window._g.showStatus = false;
+    window._g.path = path;
+    window._g.showReader = true;
+    window._g.showPagination = false;
     document.getElementById('toolbar').style.display = 'none';
-    this.el.classList.add('active');
 
     // Update toolbar buttons
     this._syncButtons();
@@ -1591,9 +1577,10 @@ const Reader = {
   close() {
     // Save current reader position before closing
     if (this._path) ReaderPosition.save(this._path, this._idx);
-    this.el.classList.remove('active');
+    window._g.showReader = false;
     document.getElementById('gallery-view').classList.remove('hidden');
     document.getElementById('toolbar').style.display = '';
+    window._g.showStatus = false;
     if (document.fullscreenElement) document.exitFullscreen();
     App.backToGallery();
   },
@@ -1840,8 +1827,8 @@ const Reader = {
     if (this._isZip) {
       thumbUrl = item.url;
     } else {
-      const rawUrl = item.url.replace(/^\/webdav/, '');
-      thumbUrl = '/img' + rawUrl + '?w=360&h=360&fit=cover&q=75';
+      const rawUrl = item.url.replace('/webdav', '');
+      thumbUrl = apiUrl('/img' + rawUrl + '?w=360&h=360&fit=cover&q=75');
     }
 
     img.src = thumbUrl;
@@ -1928,11 +1915,9 @@ const Reader = {
   _updatePageInfo() {
     const total = this._images.length;
     const cur = this._idx + 1;
-    const info = this._double
+    window._g.readerPageInfo = this._double
       ? `${cur}–${Math.min(cur + 1, total)} / ${total}`
       : `${cur} / ${total}`;
-    document.getElementById('page-info').textContent = info;
-    document.getElementById('rbtn-del').classList.toggle('disabled', this._isZip);
   },
 
   navigate(delta) {
@@ -2011,7 +1996,7 @@ const Reader = {
 
   _onFullscreenChange() {
     const isFs = !!document.fullscreenElement;
-    document.getElementById('rbtn-fs').classList.toggle('active', isFs);
+    window._g.readerIsFs = isFs;
     if (isFs) this._autoHideToolbar();
   },
 
@@ -2042,7 +2027,7 @@ const Reader = {
     const item = this._images[this._idx];
     if (!item) return;
     const src = encodeURIComponent(item.url);
-    window.open(`/img-editor?src=${src}`, '_blank');
+    window.open(apiUrl(`/img-editor?src=${src}`), '_blank');
   },
 
   openInSequence() {
@@ -2050,26 +2035,19 @@ const Reader = {
     // Encode all image URLs as base64 JSON for the sequence editor
     const urls = this._images.map(img => img.url);
     const encoded = btoa(encodeURIComponent(JSON.stringify(urls)));
-    window.open(`/img-sequence?gallery=${encoded}`, '_blank');
+    window.open(apiUrl(`/img-sequence?gallery=${encoded}`), '_blank');
   },
 
   _syncButtons() {
-    document.getElementById('rbtn-double').textContent = this._double ? '双页' : '单页';
-    document.getElementById('rbtn-double').classList.toggle('active', this._double);
-    document.getElementById('rbtn-rtl').textContent = this._rtl ? '←RTL' : 'LTR→';
-    document.getElementById('rbtn-rtl').classList.toggle('active', this._rtl);
-    document.getElementById('rbtn-view').textContent = this._viewMode === 'thumb' ? 'Fit' : (this._viewMode === 'orig' ? 'Orig' : 'Fit');
-    document.getElementById('rbtn-view').classList.toggle('active', this._viewMode === 'orig');
-    document.getElementById('rbtn-thumb').classList.toggle('active', this._viewMode === 'thumb');
-    document.getElementById('rbtn-rotate').classList.toggle('active', this._viewMode === 'rotate');
-    // Hide delete button in thumb mode (each thumb has its own delete)
-    document.getElementById('rbtn-del').style.display = this._viewMode === 'thumb' ? 'none' : '';
+    window._g.readerDouble = this._double;
+    window._g.readerRtl = this._rtl;
+    window._g.readerViewMode = this._viewMode;
   },
 
   _showToolbar(force = false) {
     if (this._toolbarVisible && !force) return;
     this._toolbarVisible = true;
-    this.toolbar.classList.remove('hidden');
+    window._g.readerToolbarVisible = true;
     clearTimeout(this._toolbarTimer);
     if (document.fullscreenElement) this._autoHideToolbar();
   },
@@ -2078,7 +2056,7 @@ const Reader = {
     clearTimeout(this._toolbarTimer);
     this._toolbarTimer = setTimeout(() => {
       this._toolbarVisible = false;
-      this.toolbar.classList.add('hidden');
+      window._g.readerToolbarVisible = false;
     }, 3000);
   },
 
@@ -2102,7 +2080,7 @@ const Reader = {
       // Middle zone: toggle toolbar
       if (this._toolbarVisible) {
         this._toolbarVisible = false;
-        this.toolbar.classList.add('hidden');
+        window._g.readerToolbarVisible = false;
       } else {
         this._showToolbar(true);
       }
@@ -2133,118 +2111,6 @@ const Reader = {
     }
   },
 };
-
-/* ═══════════════════════════════════════════════════
-   KEYBOARD HANDLER
-═══════════════════════════════════════════════════ */
-document.addEventListener('keydown', e => {
-  // Ignore keyboard shortcuts when focus is in an input/textarea
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-  const inReader = Reader.el.classList.contains('active');
-
-  if (inReader) {
-    switch (e.key) {
-      case 'ArrowLeft': case 'ArrowUp':
-        e.preventDefault();
-        Reader.navigate(-1);
-        break;
-      case 'ArrowRight': case 'ArrowDown':
-        e.preventDefault();
-        Reader.navigate(1);
-        break;
-      case 'Home':
-        e.preventDefault();
-        Reader.gotoFirst();
-        break;
-      case 'End':
-        e.preventDefault();
-        Reader.gotoLast();
-        break;
-      case 'Escape': case 'b': case 'B':
-        Reader.close();
-        break;
-      case 'f': case 'F':
-        Reader.toggleFullscreen();
-        break;
-      case 'o': case 'O':
-        Reader.cycleViewMode();
-        break;
-      case 't': case 'T':
-        Reader.toggleThumb();
-        break;
-      case 'v': case 'V':
-        Reader.toggleRotate();
-        break;
-      case 'Delete':
-        Reader.deleteCurrentPage();
-        break;
-      case 'e': case 'E':
-        Reader.openInEditor();
-        break;
-      case 's': case 'S':
-        Reader.openInSequence();
-        break;
-      case '[':
-        console.log('[keydown] [ pressed, calling goToPrevGallery');
-        Reader.goToPrevGallery();
-        break;
-      case ']':
-        console.log('[keydown] ] pressed, calling goToNextGallery');
-        Reader.goToNextGallery();
-        break;
-    }
-  } else {
-    // Gallery mode — keyboard navigation
-    switch (e.key) {
-      case 'ArrowRight': {
-        e.preventDefault();
-        GalleryView.kbMove(1);
-        break;
-      }
-      case 'ArrowLeft': {
-        e.preventDefault();
-        GalleryView.kbMove(-1);
-        break;
-      }
-      case 'ArrowDown': {
-        e.preventDefault();
-        GalleryView.kbMove(GalleryView._colCount());
-        break;
-      }
-      case 'ArrowUp': {
-        e.preventDefault();
-        GalleryView.kbMove(-GalleryView._colCount());
-        break;
-      }
-      case 'Enter': {
-        e.preventDefault();
-        GalleryView.kbEnter();
-        break;
-      }
-      case 'Delete':
-      case 'Backspace': {
-        e.preventDefault();
-        GalleryView.kbDelete();
-        break;
-      }
-      case 'b': case 'B': {
-        GalleryView.goBack();
-        break;
-      }
-      case '[': {
-        e.preventDefault();
-        GalleryView.goToPage(GalleryView._page - 1);
-        break;
-      }
-      case ']': {
-        e.preventDefault();
-        GalleryView.goToPage(GalleryView._page + 1);
-        break;
-      }
-    }
-  }
-});
 
 /* ═══════════════════════════════════════════════════
    APP CONTROLLER
@@ -2344,12 +2210,13 @@ const App = {
 /* ═══════════════════════════════════════════════════
    BOOT
 ═══════════════════════════════════════════════════ */
-GalleryView.init();
-Reader.init();
-Gallerize.init();
-// Parse URL params and navigate
-const params = Router.getParams();
-App.navigate(params.path, true, { page: params.page, reader: params.reader });
+document.addEventListener('alpine:init', () => {
+  GalleryView.init();
+  Reader.init();
+  Gallerize.init();
+  const params = Router.getParams();
+  App.navigate(params.path, true, { page: params.page, reader: params.reader });
+});
 </script>
 </body>
 </html>
