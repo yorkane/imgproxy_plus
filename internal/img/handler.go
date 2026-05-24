@@ -49,6 +49,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if info, err := os.Stat(fullPath); err == nil && info.IsDir() {
+		firstImg := findFirstImage(fullPath)
+		if firstImg == "" {
+			http.Error(w, `{"error":"not_found","message":"no image found in directory"}`, http.StatusNotFound)
+			return
+		}
+		fullPath = firstImg
+	}
+
 	sourceEncoded := encodeLocalSource(fullPath)
 	query := r.URL.Query()
 
@@ -154,7 +163,7 @@ func detectAnimated(path string) bool {
 	if bytes.HasPrefix(buf, []byte("RIFF")) && n >= 12 &&
 		bytes.Equal(buf[8:12], []byte("WEBP")) {
 		if n >= 17 && bytes.HasPrefix(buf[12:], []byte("VP8X")) {
-			if buf[16]&0x02 != 0 {
+			if buf[16]&0x10 != 0 {
 				return true
 			}
 		}
@@ -166,4 +175,38 @@ func detectAnimated(path string) bool {
 	}
 
 	return false
+}
+
+var imgExts = map[string]bool{
+	".jpg": true, ".jpeg": true, ".jfif": true, ".jiff": true,
+	".png": true, ".gif": true, ".webp": true, ".bmp": true,
+	".avif": true, ".heic": true, ".heif": true, ".svg": true,
+}
+
+func findFirstImage(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	var subDirs []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() {
+			subDirs = append(subDirs, filepath.Join(dir, name))
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(name))
+		if ext == "" {
+			ext = "." + strings.ToLower(name)
+		}
+		if imgExts[ext] {
+			return filepath.Join(dir, name)
+		}
+	}
+	for _, sub := range subDirs {
+		if found := findFirstImage(sub); found != "" {
+			return found
+		}
+	}
+	return ""
 }

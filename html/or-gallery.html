@@ -690,6 +690,14 @@ function zipFileUrl(archivePath, internalPath) {
   return '/zip' + encodeFilePath(archivePath) + '/' + encodedInternal;
 }
 
+/** Build resized reader URL via /img/ for faster loading */
+function buildReaderUrl(rawUrl, viewMode) {
+  if (viewMode === 'orig') return rawUrl;
+  if (rawUrl.startsWith('/zip')) return rawUrl;
+  const p = rawUrl.replace(/^\/webdav/, '');
+  return '/img' + p + '?w=1920&h=1920&fit=contain&q=85';
+}
+
 function encodeFilePath(p) {
   // Encode each path segment individually, preserving slashes
   return p.split('/').map(s => s ? encodeURIComponent(s) : s).join('/');
@@ -2199,6 +2207,7 @@ const Reader = {
 
     // Use cached image if available
     const entry = this._getCachedImg(item.url);
+    const readerUrl = buildReaderUrl(item.url, this._viewMode);
 
     const showImg = () => {
       loadingIndicator.style.display = 'none';
@@ -2206,11 +2215,9 @@ const Reader = {
     };
 
     if (entry.loaded) {
-      // Already cached - use immediately
-      img.src = item.url;
+      img.src = readerUrl;
       showImg();
     } else {
-      // Load with indicator
       img.onload = showImg;
       img.onerror = () => {
         loadingIndicator.innerHTML = '⚠️';
@@ -2219,7 +2226,7 @@ const Reader = {
       };
       // Trigger load via cache system
       this._loadImg(item.url).then(showImg).catch(() => {});
-      img.src = item.url;
+      img.src = readerUrl;
     }
 
     // ── Orig-mode interaction on image ─────────────────────────────

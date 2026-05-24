@@ -6,8 +6,9 @@ services:
     ports:
       - "8082:8080"
     volumes:
-      - /pnas/ssd1/aria2:/data
+      - ${PLUS_LOCAL_PATH:-./data/}:/data
       - ramdisk:/mnt/ramdisk
+      - ./html:/usr/local/bin/html
     env_file:
       - .env
     networks:
@@ -24,3 +25,6 @@ volumes:
 networks:
   imgproxy_net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
