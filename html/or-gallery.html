@@ -196,6 +196,17 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════ */
+const LS = {
+  get(k, def) { try { const v = localStorage.getItem(k); return v !== null ? v : def; } catch { return def; } },
+  set(k, v) { try { localStorage.setItem(k, String(v)); } catch {} },
+  int(k, def) { const v = LS.get(k, null); return v !== null ? parseInt(v, 10) : def; },
+};
+// Shared image resize defaults
+const IMG_DEF = { w: 1920, h: 1920, fit: 'contain', q: 85 };
+
+/* ═══════════════════════════════════════════════════
    ALPINE INIT
 ═══════════════════════════════════════════════════ */
 document.addEventListener('alpine:init', () => {
@@ -227,24 +238,19 @@ document.addEventListener('alpine:init', () => {
     readerPageInfo: '',
     readerToolbarVisible: true,
     readerIsFs: false,
-    readerResizeEnabled: localStorage.getItem('or-reader-resize') !== '0',
-    readerResizeW: parseInt(localStorage.getItem('or-reader-w') || '1920'),
-    readerResizeH: parseInt(localStorage.getItem('or-reader-h') || '1920'),
-    readerResizeFit: localStorage.getItem('or-reader-fit') || 'contain',
-    readerResizeQ: parseInt(localStorage.getItem('or-reader-q') || '85'),
+    readerResizeEnabled: LS.get('or-reader-resize', '1') !== '0',
+    readerResizeW: LS.int('or-reader-w', IMG_DEF.w),
+    readerResizeH: LS.int('or-reader-h', IMG_DEF.h),
+    readerResizeFit: LS.get('or-reader-fit', IMG_DEF.fit),
+    readerResizeQ: LS.int('or-reader-q', IMG_DEF.q),
     readerResizeShow: false,
 
-    readerToggleResize() {
-      this.readerResizeEnabled = !this.readerResizeEnabled;
-      localStorage.setItem('or-reader-resize', this.readerResizeEnabled ? '1' : '0');
-      Reader._imgCache.clear();
-      Reader._renderPage(0);
-    },
     readerSaveResize() {
-      localStorage.setItem('or-reader-w', this.readerResizeW);
-      localStorage.setItem('or-reader-h', this.readerResizeH);
-      localStorage.setItem('or-reader-fit', this.readerResizeFit);
-      localStorage.setItem('or-reader-q', this.readerResizeQ);
+      LS.set('or-reader-resize', this.readerResizeEnabled ? '1' : '0');
+      LS.set('or-reader-w', this.readerResizeW);
+      LS.set('or-reader-h', this.readerResizeH);
+      LS.set('or-reader-fit', this.readerResizeFit);
+      LS.set('or-reader-q', this.readerResizeQ);
       Reader._imgCache.clear();
       Reader._renderPage(0);
     },
@@ -417,14 +423,14 @@ function zipFileUrl(archivePath, internalPath) {
 
 /** Build resized reader URL via /img/ for faster loading */
 function buildReaderUrl(rawUrl, viewMode) {
-  const resizeOn = window._g ? window._g.readerResizeEnabled : true;
-  if (viewMode === 'orig' || !resizeOn) return apiUrl(rawUrl);
+  const g = window._g;
+  if (viewMode === 'orig' || (g && !g.readerResizeEnabled)) return apiUrl(rawUrl);
   if (rawUrl.startsWith(apiUrl('/zip'))) return rawUrl;
   const inner = rawUrl.replace('/webdav', '');
-  const w = window._g ? window._g.readerResizeW : 1920;
-  const h = window._g ? window._g.readerResizeH : 1920;
-  const f = window._g ? window._g.readerResizeFit : 'contain';
-  const q = window._g ? window._g.readerResizeQ : 85;
+  const w = g ? g.readerResizeW : IMG_DEF.w;
+  const h = g ? g.readerResizeH : IMG_DEF.h;
+  const f = g ? g.readerResizeFit : IMG_DEF.fit;
+  const q = g ? g.readerResizeQ : IMG_DEF.q;
   return apiUrl('/img' + inner + `?w=${w}&h=${h}&fit=${f}&q=${q}`);
 }
 
@@ -662,17 +668,10 @@ const Gallerize = {
   _running: false,
 
   init() {
-    this._mode      = localStorage.getItem(this.LS_MODE) || 'local';
-    this._remoteUrl = localStorage.getItem(this.LS_REMOTE) || '';
-    this._imgParams = {
-      w: localStorage.getItem(this.LS_W),
-      h: localStorage.getItem(this.LS_H),
-      fit: localStorage.getItem(this.LS_FIT),
-      q: localStorage.getItem(this.LS_Q),
-    };
-    this._concurrency = parseInt(localStorage.getItem(this.LS_CONCURRENCY) || '12', 10);
-
-    // All UI event wiring now handled by Alpine
+    this._mode      = LS.get(this.LS_MODE, 'local');
+    this._remoteUrl = LS.get(this.LS_REMOTE, '');
+    this._imgParams = { w: LS.get(this.LS_W, null), h: LS.get(this.LS_H, null), fit: LS.get(this.LS_FIT, null), q: LS.get(this.LS_Q, null) };
+    this._concurrency = LS.int(this.LS_CONCURRENCY, 12);
   },
 
   // Resolve the directory to gallerize: always the directory Reader is currently browsing.
@@ -688,7 +687,7 @@ const Gallerize = {
 
   setMode(m) {
     this._mode = m;
-    localStorage.setItem(this.LS_MODE, m);
+    LS.set(this.LS_MODE, m);
     window._g.gzMode = m;
   },
 
@@ -756,12 +755,12 @@ const Gallerize = {
     this._imgParams.q = window._g.gzQ;
 
     // Persist to localStorage
-    localStorage.setItem(this.LS_REMOTE, this._remoteUrl);
-    localStorage.setItem(this.LS_W, String(this._imgParams.w || ''));
-    localStorage.setItem(this.LS_H, String(this._imgParams.h || ''));
-    localStorage.setItem(this.LS_FIT, this._imgParams.fit || '');
-    localStorage.setItem(this.LS_Q, String(this._imgParams.q || ''));
-    localStorage.setItem(this.LS_CONCURRENCY, String(this._concurrency));
+    LS.set(this.LS_REMOTE, this._remoteUrl);
+    LS.set(this.LS_W, this._imgParams.w || '');
+    LS.set(this.LS_H, this._imgParams.h || '');
+    LS.set(this.LS_FIT, this._imgParams.fit || '');
+    LS.set(this.LS_Q, this._imgParams.q || '');
+    LS.set(this.LS_CONCURRENCY, this._concurrency);
 
     if (this._mode === 'remote') {
       if (!this._remoteUrl.trim()) {
@@ -793,7 +792,7 @@ const Gallerize = {
     } catch (err) {
       this._finishProgress(false);
       window._g.gzProgressText = '请求失败: ' + err.message;
-      this._showError(err.message);
+      this._showResult({ ok: false, message: err.message });
     } finally {
       this._setRunning(false);
       window._g.gzRunText = '再次执行';
@@ -905,13 +904,6 @@ const Gallerize = {
     window._g.gzResultShow = true;
   },
 
-  _showError(msg) {
-    window._g.gzResultClass = 'gz-result-summary err';
-    window._g.gzResultSummary = '✗ ' + msg;
-    window._g.gzResultStats = '';
-    window._g.gzResultErrorsShow = false;
-    window._g.gzResultShow = true;
-  },
 };
 
 /* ═══════════════════════════════════════════════════
