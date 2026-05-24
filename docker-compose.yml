@@ -1,0 +1,26 @@
+services:
+  imgproxy_plus:
+    image: imgproxy_plus:latest
+    container_name: imgproxy_plus
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    volumes:
+      - /pnas/ssd1/aria2:/data
+      - ramdisk:/mnt/ramdisk
+    env_file:
+      - .env
+    networks:
+      - imgproxy_net
+
+volumes:
+  ramdisk:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=512m,mode=0755"
+
+networks:
+  imgproxy_net:
+    driver: bridge

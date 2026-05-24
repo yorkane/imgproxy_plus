@@ -32,11 +32,8 @@ func checkIPWhitelist(cfg *config.Config, r *http.Request) bool {
 	if len(cfg.AuthIPWhitelist) == 0 {
 		return false
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	ip := net.ParseIP(host)
+	clientIP := getClientIP(r)
+	ip := net.ParseIP(clientIP)
 	if ip == nil {
 		return false
 	}
@@ -46,6 +43,21 @@ func checkIPWhitelist(cfg *config.Config, r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+func getClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func checkBasicAuth(cfg *config.Config, r *http.Request) bool {

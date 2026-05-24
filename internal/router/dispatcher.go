@@ -67,7 +67,9 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		withAuth(d.cfg, zipfs.Handler(d.cfg)).ServeHTTP(w, r)
 	case strings.HasPrefix(path, "/img/"):
 		withAuth(d.cfg, d.imgHandler).ServeHTTP(w, r)
-	case path == "/or-gallery" || path == "/img-editor" || path == "/img-sequence" || path == "/":
+	case path == "/or-gallery" || path == "/img-editor" || path == "/img-sequence":
+		withAuth(d.cfg, static.Handler()).ServeHTTP(w, r)
+	case path == "/":
 		static.Handler().ServeHTTP(w, r)
 	case strings.HasPrefix(path, "/libs/"):
 		static.Handler().ServeHTTP(w, r)
@@ -78,7 +80,9 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/health":
 		d.imgproxyClient.ProxyTo(w, r)
 	default:
-		d.smartRoute(w, r)
+		withAuth(d.cfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			d.smartRoute(w, r)
+		})).ServeHTTP(w, r)
 	}
 }
 
