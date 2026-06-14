@@ -40,10 +40,8 @@ func BuildTree(rootPath string, cfg *config.Config) ([]*Group, error) {
 	collectGroups(tn, &groups)
 
 	if len(groups) == 0 {
-		return []*Group{{
-			Name:    rootName,
-			DirPath: rootPath,
-		}}, nil
+		// No images found — nothing to do, skip gracefully
+		return nil, nil
 	}
 
 	return groups, nil

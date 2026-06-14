@@ -60,6 +60,13 @@ func ProcessOne(rootPath string, cfg *config.Config) (*ArchiveResult, error) {
 		return nil, err
 	}
 
+	if len(groups) == 0 {
+		slog.Info("no images to process", "dir", filepath.Base(rootPath))
+		LogEvent("INFO", "skip", filepath.Base(rootPath), "", map[string]interface{}{"reason": "no images"})
+		CleanupDir(rootPath)
+		return &ArchiveResult{}, nil
+	}
+
 	slog.Info("groups built", "count", len(groups))
 	LogEvent("INFO", "start", filepath.Base(rootPath), "", map[string]interface{}{
 		"groups": len(groups), "images": countTotal(groups),

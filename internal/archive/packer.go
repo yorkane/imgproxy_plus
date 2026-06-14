@@ -28,6 +28,9 @@ func PackCBZ(group *Group, cfg *config.Config) (string, error) {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
+		if strings.HasSuffix(strings.ToLower(name), ".webp") {
+			continue
+		}
 		if IsJfifExt(name) || (IsImageExt(name) && !IsJfifExt(name)) {
 			cbzFiles = append(cbzFiles, name)
 		}
