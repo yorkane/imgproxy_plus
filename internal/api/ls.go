@@ -268,6 +268,14 @@ func sortItems(items []FileItem, sc sortConfig) []FileItem {
 	copy(sorted, items)
 
 	sort.SliceStable(sorted, func(i, j int) bool {
+		// __cover.jfif always first
+		if sorted[i].Name == "__cover.jfif" && sorted[j].Name != "__cover.jfif" {
+			return true
+		}
+		if sorted[i].Name != "__cover.jfif" && sorted[j].Name == "__cover.jfif" {
+			return false
+		}
+
 		var cmp int
 		switch sc.sort {
 		case "size":

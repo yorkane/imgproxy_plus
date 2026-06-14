@@ -67,6 +67,10 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		withAuth(d.cfg, api.HandleBatchImg(d.cfg)).ServeHTTP(w, r)
 	case path == "/api/gallerize":
 		withAuth(d.cfg, api.HandleGallerize(d.cfg)).ServeHTTP(w, r)
+	case path == "/api/migrate-covers":
+		withAuth(d.cfg, api.HandleMigrateCovers(d.cfg)).ServeHTTP(w, r)
+	case path == "/api/archive-status":
+		withAuth(d.cfg, api.HandleArchiveStatus(d.cfg)).ServeHTTP(w, r)
 	case strings.HasPrefix(path, "/zip/"):
 		withAuth(d.cfg, zipfs.Handler(d.cfg)).ServeHTTP(w, r)
 	case strings.HasPrefix(path, "/img/"):

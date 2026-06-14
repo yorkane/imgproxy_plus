@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -24,6 +25,19 @@ type Config struct {
 	FileAPIDisable   bool
 	ImgproxyKey      string
 	ImgproxySalt     string
+
+	GalleryAutoEnabled    bool
+	GalleryScanDir        string
+	GalleryArchiveDir     string
+	GalleryScanInterval   int
+	GalleryArchiveFmt     string
+	GalleryArchiveW       int
+	GalleryArchiveH       int
+	GalleryArchiveFit     string
+	GalleryArchiveQ       int
+	GalleryArchiveMinKB      int
+	GalleryArchiveMinChapter int
+	GalleryArchiveConcurrency int
 }
 
 func Load() *Config {
@@ -88,6 +102,60 @@ func Load() *Config {
 
 	c.ImgproxyKey = env("IMGPROXY_KEY", "")
 	c.ImgproxySalt = env("IMGPROXY_SALT", "")
+
+	c.GalleryAutoEnabled = strings.ToLower(env("GALLERY_AUTO_ENABLED", "false")) == "true"
+	c.GalleryScanDir = env("GALLERY_SCAN_DIR", "/data/ssd1/aria2/completed")
+	c.GalleryArchiveDir = env("GALLERY_ARCHIVE_DIR", "/data/ssd1/aria2/archived")
+	c.GalleryArchiveFmt = env("GALLERY_ARCHIVE_FMT", "webp")
+	c.GalleryArchiveFit = env("GALLERY_ARCHIVE_FIT", "cover")
+
+	interval, err := strconv.Atoi(env("GALLERY_SCAN_INTERVAL", "1800"))
+	if err != nil || interval <= 0 {
+		interval = 1800
+	}
+	c.GalleryScanInterval = interval
+
+	w, err := strconv.Atoi(env("GALLERY_ARCHIVE_W", "2560"))
+	if err != nil || w <= 0 {
+		w = 2560
+	}
+	c.GalleryArchiveW = w
+
+	h, err := strconv.Atoi(env("GALLERY_ARCHIVE_H", "2560"))
+	if err != nil || h <= 0 {
+		h = 2560
+	}
+	c.GalleryArchiveH = h
+
+	q, err := strconv.Atoi(env("GALLERY_ARCHIVE_Q", "90"))
+	if err != nil || q <= 0 || q > 100 {
+		q = 90
+	}
+	c.GalleryArchiveQ = q
+
+	minKB, err := strconv.Atoi(env("GALLERY_ARCHIVE_MIN_KB", "10"))
+	if err != nil || minKB < 0 {
+		minKB = 10
+	}
+	c.GalleryArchiveMinKB = minKB
+
+	minChapter, err := strconv.Atoi(env("GALLERY_ARCHIVE_MIN_CHAPTER", "5"))
+	if err != nil || minChapter < 1 {
+		minChapter = 5
+	}
+	c.GalleryArchiveMinChapter = minChapter
+
+	concurrency, err := strconv.Atoi(env("GALLERY_ARCHIVE_CONCURRENCY", "0"))
+	if err != nil || concurrency < 0 {
+		concurrency = 0
+	}
+	if concurrency == 0 {
+		concurrency = runtime.NumCPU() - 2
+		if concurrency < 1 {
+			concurrency = 1
+		}
+	}
+	c.GalleryArchiveConcurrency = concurrency
 
 	return c
 }

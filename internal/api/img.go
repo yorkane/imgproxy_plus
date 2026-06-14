@@ -211,7 +211,7 @@ type BatchImgResponse struct {
 }
 
 var imgExts = map[string]bool{
-	".jpg": true, ".jpeg": true, ".jfif": true, ".jiff": true,
+	".jpg": true, ".jpeg": true, ".jfif": true,
 	".png": true, ".webp": true, ".gif": true, ".bmp": true,
 	".tiff": true, ".tif": true, ".avif": true, ".svg": true,
 	".ico": true, ".heic": true, ".heif": true,

@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
+	"imgproxy_plus/internal/archive"
 	"imgproxy_plus/internal/config"
 	"imgproxy_plus/internal/router"
 	"imgproxy_plus/internal/static"
@@ -42,10 +47,35 @@ func main() {
 	dispatcher := router.New(cfg)
 	addr := fmt.Sprintf(":%s", cfg.HTTPPort)
 
+	archive.StartScanner(cfg)
+
 	slog.Info("imgproxy_plus starting", "port", cfg.HTTPPort, "data_root", cfg.DataRoot, "html_root", htmlRoot, "imgproxy_url", cfg.ImgproxyURL)
 
-	if err := http.ListenAndServe(addr, dispatcher); err != nil {
+	srv := &http.Server{Addr: addr, Handler: dispatcher}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		slog.Warn("received signal", "signal", sig.String())
+
+		archive.Shutdown()
+
+		archive.WaitShutdown()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(ctx); err != nil {
+			slog.Error("server shutdown error", "error", err)
+		}
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)
 	}
+
+	slog.Warn("server stopped")
 }

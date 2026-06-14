@@ -178,7 +178,7 @@ func detectAnimated(path string) bool {
 }
 
 var imgExts = map[string]bool{
-	".jpg": true, ".jpeg": true, ".jfif": true, ".jiff": true,
+	".jpg": true, ".jpeg": true, ".jfif": true,
 	".png": true, ".gif": true, ".webp": true, ".bmp": true,
 	".avif": true, ".heic": true, ".heif": true, ".svg": true,
 }

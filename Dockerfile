@@ -6,7 +6,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o imgproxy_plus .
 
 FROM ghcr.io/imgproxy/imgproxy:latest
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates unrar p7zip-full poppler-utils xz-utils \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /build/imgproxy_plus /usr/local/bin/imgproxy_plus
 COPY html/ /usr/local/bin/html/
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

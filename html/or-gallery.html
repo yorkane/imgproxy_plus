@@ -15,6 +15,35 @@
     <button class="btn" id="btn-back" x-show="path !== '/'" @click="goBack" title="返回上级 (B)">←</button>
     <div class="breadcrumb"><span x-text="path">/</span></div>
     <button class="btn" id="btn-del-mode" :class="{ active: delMode }" @click="toggleDelMode" title="删除模式">🗑</button>
+    <button class="btn" @click="triggerArchive" title="手动触发 Archive">📦</button>
+  </div>
+
+  <!-- ─── Archive Status Bar ─── -->
+  <div id="archive-status-bar" x-show="archiveStatus?.running" :class="{ open: archiveMonitorShow }" @click="toggleArchiveMonitor()">
+    <span>📦</span>
+    <span class="archive-bar-text">
+      Archive: <span x-text="archiveStatus?.current_dir"></span>
+      <span x-text="archiveStatus?.converted"></span>/<span x-text="archiveStatus?.total_images"></span> 转换中...
+    </span>
+    <span class="archive-bar-arrow">▾</span>
+    <div id="archive-monitor-panel" :class="{ show: archiveMonitorShow }" @click.stop>
+      <div class="archive-panel-header">
+        <span>📦 Archive 日志</span>
+        <button class="archive-panel-close" @click="archiveMonitorShow = false">✕</button>
+      </div>
+      <template x-for="log in archiveLogs" :key="log.time">
+        <div class="archive-log-entry">
+          <span class="archive-log-time" x-text="log.time.slice(11,19)"></span>
+          <span class="archive-log-level" :class="(log.level || '').toLowerCase()" x-text="log.level"></span>
+          <span class="archive-log-msg">
+            <span x-show="log.dir" class="archive-log-dir" x-text="log.dir + ': '"></span>
+            <span x-text="log.msg"></span>
+            <span x-show="log.group" x-text="' → ' + log.group" style="color:var(--text2)"></span>
+          </span>
+        </div>
+      </template>
+      <div x-show="!archiveLogs.length" class="archive-log-entry archive-log-empty">暂无日志</div>
+    </div>
   </div>
 
   <!-- ─── Gallery Grid ─── -->
@@ -120,6 +149,52 @@
 
 <!-- ─── OSD ─── -->
 <div id="osd"></div>
+
+<!-- ─── Video Player ─── -->
+<div id="video-player" x-show="videoPlayerShow"
+     @keydown.window="videoOnKey($event)"
+     @mousemove="VideoPlayer._showControls()"
+     @touchstart="VideoPlayer._showControls()">
+  <div class="video-top-bar" :class="{ hidden: !videoControlsVisible }">
+    <button class="btn" @click="videoClose">← 返回</button>
+    <span x-text="videoTitle"></span>
+    <div class="video-top-right">
+      <span x-text="videoTime"></span> / <span x-text="videoDuration"></span>
+    </div>
+  </div>
+  <video id="vp-video" preload="auto" playsinline
+    :src="videoSrc"
+    @click="videoTogglePlay"
+    @timeupdate="videoTimeUpdate"
+    @loadedmetadata="videoLoaded"
+    @play="videoPlaying = true"
+    @pause="videoPlaying = false"
+    @ended="videoEnded"
+    @mousedown="videoSpeedUp"
+    @touchstart="videoSpeedUp"
+    @mouseup="videoSpeedRestore"
+    @touchend="videoSpeedRestore"
+    @mouseleave="videoSpeedRestore"
+    x-show="videoSrc">
+  </video>
+  <div class="video-controls" :class="{ hidden: !videoControlsVisible }" @click.stop>
+    <button class="btn" @click="videoPrev" title="上一个">⏮</button>
+    <button class="btn" @click="videoTogglePlay" x-text="videoPlaying ? '⏸' : '▶'" title="播放/暂停"></button>
+    <button class="btn" @click="videoNext" title="下一个">⏭</button>
+    <span class="video-time" x-text="videoTime + ' / ' + videoDuration"></span>
+    <input type="range" class="video-seek" min="0" max="100" step="0.1" :value="videoProgress" @input="videoSeek($event.target.value)">
+    <select class="video-speed" x-model="videoSpeed" @change="videoSetSpeed" title="播放速度">
+      <option value="0.5">0.5x</option>
+      <option value="0.75">0.75x</option>
+      <option value="1">1x</option>
+      <option value="1.25">1.25x</option>
+      <option value="1.5">1.5x</option>
+      <option value="2">2x</option>
+    </select>
+    <input type="range" class="video-volume" min="0" max="100" :value="videoVolume" @input="videoSetVolume($event.target.value)" title="音量">
+    <button class="btn" @click="videoFullscreen" title="全屏">⛶</button>
+  </div>
+</div>
 
 <!-- ─── Gallerize Modal ─── -->
 <div id="gallerize-modal" :class="{ show: gzModal }" @click.self="gzClose">
@@ -230,13 +305,71 @@ document.addEventListener('alpine:init', () => {
     totalPages: 0,
     showPagination: false,
     pageInput: 1,
+    archiveStatus: null,
+    archiveLogs: [],
+    archiveMonitorShow: false,
 
     init() {
       window._g = this;
+      ArchiveMonitor.init();
     },
 
     goBack() { GalleryView.goBack(); },
     toggleDelMode() { GalleryView.toggleDelMode(); },
+    toggleArchiveMonitor() { ArchiveMonitor.toggle(); },
+    async triggerArchive() {
+      const path = this.path;
+      if (path === '/') { showOsd('请先进入目录'); return; }
+      try {
+        const res = await fetch(apiUrl('/api/gallerize'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: path.slice(1), type: 'v2' }),
+          credentials: 'same-origin',
+        });
+        const json = await res.json();
+        if (json.ok) {
+          showOsd(`Archive 已触发: ${json.cbz?.length || 0} 个 CBZ`);
+        } else {
+          showOsd('触发失败: ' + (json.error || 'unknown'));
+        }
+      } catch (err) {
+        showOsd('请求失败: ' + err.message);
+      }
+    },
+
+    videoPlayerShow: false,
+    videoPlaying: false,
+    videoControlsVisible: true,
+    videoSrc: '',
+    videoTitle: '',
+    videoTime: '0:00',
+    videoDuration: '0:00',
+    videoProgress: 0,
+    videoVolume: 80,
+    videoSpeed: 1,
+    videoSeek(v) { VideoPlayer._seekPercent(v); },
+    videoSetVolume(v) { VideoPlayer.setVolume(v); },
+    videoSetSpeed() { VideoPlayer.setSpeed(this.videoSpeed); },
+    videoTogglePlay() { VideoPlayer.togglePlay(); },
+    videoPrev() { VideoPlayer.prev(); },
+    videoNext() { VideoPlayer.next(); },
+    videoClose() { VideoPlayer.close(); },
+    videoFullscreen() { VideoPlayer.toggleFullscreen(); },
+    videoTimeUpdate() { VideoPlayer._onTimeUpdate(); },
+    videoLoaded() { VideoPlayer._onLoaded(); },
+    videoEnded() { VideoPlayer.next(); },
+    videoSpeedUp() { VideoPlayer._speedUp(); },
+    videoSpeedRestore() { VideoPlayer._speedRestore(); },
+    videoOnKey(e) {
+      if (e.key === 'Escape') { VideoPlayer.close(); return; }
+      if (e.key === ' ') { e.preventDefault(); VideoPlayer.togglePlay(); return; }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); VideoPlayer.seek(-5); return; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); VideoPlayer.seek(5); return; }
+      if (e.key === 'f' || e.key === 'F') { VideoPlayer.toggleFullscreen(); return; }
+      if (e.key === '[') { VideoPlayer.prev(); return; }
+      if (e.key === ']') { VideoPlayer.next(); return; }
+    },
 
     showReader: false,
     readerDouble: false,
@@ -306,6 +439,11 @@ document.addEventListener('alpine:init', () => {
     gzRun() { Gallerize.run(); },
 
     cardClick(item, el) {
+      if (item.isVideo) {
+        const videos = this.items.filter(it => it.isVideo);
+        VideoPlayer.open(item, videos);
+        return;
+      }
       const cards = GalleryView._cards();
       GalleryView._kbIdx = cards.indexOf(el);
       Router.push(item.path);
@@ -376,6 +514,8 @@ const IMG_EXTS = new Set([
   'ico','cur',                              // icon formats
 ]);
 const ZIP_EXTS = new Set(['zip','cbz','epub']);
+const VIDEO_EXTS = new Set(['mp4','mkv','webm','avi','mov','m4v','m4v','flv','mpg','mpeg','wmv','3gp']);
+function isVideo(name) { return VIDEO_EXTS.has(extOf(name)); }
 const COVER_RE = /^(\d{0,6}[-_\s]?)cover/i;
 const BASE = (() => { const b = document.querySelector('base'); return b ? b.href.replace(/\/+$/, '') : ''; })();
 function apiUrl(p) { return BASE + p; }
@@ -413,6 +553,9 @@ function naturalSort(arr, key) {
 function pickCover(items) {
   const imgs = items.filter(it => it.type === 'file' && isImage(it.name));
   if (!imgs.length) return null;
+  // __cover.jfif has absolute priority
+  const builtin = imgs.find(it => it.name === '__cover.jfif');
+  if (builtin) return builtin;
   const cover = imgs.find(it => COVER_RE.test(it.name));
   return cover || imgs[0];
 }
@@ -435,8 +578,11 @@ function zipFileUrl(archivePath, internalPath) {
 /** Build resized reader URL via /img/ for faster loading */
 function buildReaderUrl(rawUrl, viewMode) {
   const g = window._g;
-  if (g && !g.readerResizeEnabled) return apiUrl(rawUrl);
+  // If rawUrl is already absolute (starts with http or BASE), don't double-prefix
+  const isAbsolute = rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith(BASE);
+  if (g && !g.readerResizeEnabled) return isAbsolute ? rawUrl : apiUrl(rawUrl);
   if (rawUrl.startsWith(apiUrl('/zip'))) return rawUrl;
+  if (isAbsolute) return rawUrl;
   const inner = rawUrl.replace('/webdav', '');
   const w = g ? g.readerResizeW : IMG_DEF.w;
   const h = g ? g.readerResizeH : IMG_DEF.h;
@@ -919,8 +1065,212 @@ const Gallerize = {
 };
 
 /* ═══════════════════════════════════════════════════
+   ARCHIVE MONITOR
+══════════════════════════════════════════════════ */
+const ArchiveMonitor = {
+  _timer: null,
+  _polling: false,
+
+  async fetch() {
+    try {
+      const res = await fetch(apiUrl('/api/archive-status'));
+      if (!res.ok) return;
+      const data = await res.json();
+      const g = window._g;
+      if (!g) return;
+      g.archiveStatus = data.status || null;
+      g.archiveLogs = (data.logs || []).slice(0, 20);
+      if (data.status && !data.status.running && this._polling) {
+        this.stop();
+      }
+    } catch {}
+  },
+
+  start() {
+    if (this._polling) return;
+    this._polling = true;
+    this.fetch();
+    this._timer = setInterval(() => this.fetch(), 3000);
+  },
+
+  stop() {
+    this._polling = false;
+    clearInterval(this._timer);
+    this._timer = null;
+  },
+
+  toggle() {
+    const g = window._g;
+    if (!g) return;
+    g.archiveMonitorShow = !g.archiveMonitorShow;
+    if (g.archiveMonitorShow) {
+      this.start();
+    } else if (!g.archiveStatus?.running) {
+      this.stop();
+    }
+  },
+
+  init() {
+    this.fetch().then(() => {
+      if (window._g?.archiveStatus?.running) {
+        this.start();
+      }
+    });
+  },
+};
+
+/* ═══════════════════════════════════════════════════
+   VIDEO PLAYER
+══════════════════════════════════════════════════ */
+const VideoPlayer = {
+  _video: null,
+  _current: null,
+  _videos: [],
+  _idx: -1,
+  _hideTimer: null,
+
+  open(item, videos) {
+    this._current = item;
+    this._videos = videos;
+    this._idx = videos.findIndex(v => v.path === item.path);
+    const g = window._g;
+    g.videoPlayerShow = true;
+    g.videoPlaying = false;
+    g.videoSrc = item.isZip
+      ? apiUrl('/zip' + encodeFilePath(item.path))
+      : apiUrl(encodeFilePath(item.path));
+    g.videoTitle = item.name;
+    g.videoTime = '0:00';
+    g.videoDuration = '0:00';
+    g.videoProgress = 0;
+    g.videoSpeed = 1;
+
+    this._video = document.getElementById('vp-video');
+    if (this._video) {
+      this._video.volume = g.videoVolume / 100;
+      this._video.load();
+    }
+    setTimeout(() => {
+      if (this._video) this._video.play().catch(() => {});
+    }, 300);
+    this._showControls();
+  },
+
+  _showControls() {
+    const g = window._g;
+    if (g) g.videoControlsVisible = true;
+    clearTimeout(this._hideTimer);
+    this._hideTimer = setTimeout(() => {
+      if (window._g) window._g.videoControlsVisible = false;
+    }, 2000);
+  },
+
+  close() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document).catch(() => {});
+    }
+    const g = window._g;
+    g.videoPlayerShow = false;
+    g.videoPlaying = false;
+    if (this._video) {
+      this._video.pause();
+      this._video.removeAttribute('src');
+    }
+    this._current = null;
+  },
+
+  prev() { this._navigate(-1); },
+  next() { this._navigate(1); },
+
+  _navigate(delta) {
+    const newIdx = this._idx + delta;
+    if (newIdx < 0 || newIdx >= this._videos.length) return;
+    this.open(this._videos[newIdx], this._videos);
+  },
+
+  togglePlay() {
+    const v = document.getElementById('vp-video');
+    if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); }
+    else { v.pause(); }
+  },
+
+  seek(seconds) {
+    const v = document.getElementById('vp-video');
+    if (v) { v.currentTime = Math.max(0, Math.min(v.currentTime + seconds, v.duration || 0)); }
+  },
+
+  _seekPercent(pct) {
+    const v = document.getElementById('vp-video');
+    if (v && v.duration) { v.currentTime = (pct / 100) * v.duration; }
+  },
+
+  setVolume(vol) {
+    const v = document.getElementById('vp-video');
+    if (v) { v.volume = vol / 100; }
+  },
+
+  setSpeed(rate) {
+    const v = document.getElementById('vp-video');
+    if (v) { v.playbackRate = parseFloat(rate); }
+  },
+
+  _speedUp() {
+    const v = document.getElementById('vp-video');
+    if (v && v.playbackRate !== 2) {
+      this._savedSpeed = v.playbackRate;
+      v.playbackRate = 2;
+    }
+  },
+
+  _speedRestore() {
+    const v = document.getElementById('vp-video');
+    if (v && v.playbackRate === 2) {
+      v.playbackRate = this._savedSpeed || 1;
+      this._savedSpeed = null;
+    }
+  },
+
+  toggleFullscreen() {
+    const el = document.getElementById('video-player') || document.getElementById('vp-video');
+    if (!el) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document).catch(() => {});
+    } else {
+      (el.requestFullscreen || el.webkitRequestFullscreen).call(el).catch(() => {});
+    }
+  },
+
+  _onTimeUpdate() {
+    const v = document.getElementById('vp-video');
+    const g = window._g;
+    if (!v || !g) return;
+    const cur = v.currentTime || 0;
+    const dur = v.duration || 0;
+    g.videoTime = fmtDuration(cur);
+    g.videoDuration = fmtDuration(dur);
+    g.videoProgress = dur > 0 ? (cur / dur) * 100 : 0;
+  },
+
+  _onLoaded() {
+    const v = document.getElementById('vp-video');
+    const g = window._g;
+    if (v && g) {
+      g.videoDuration = fmtDuration(v.duration || 0);
+      g.videoPlaying = !v.paused;
+    }
+  },
+};
+
+function fmtDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+/* ═══════════════════════════════════════════════════
    ROUTER
-═══════════════════════════════════════════════════ */
+══════════════════════════════════════════════════ */
 const Router = {
   /**
    * Parse URL parameters from location.href
@@ -1214,13 +1564,14 @@ const GalleryView = {
       this._total = data.total;
       this._totalPages = Math.ceil(data.total / this._pageSize);
 
-      const items = data.items.filter(it => isDir(it.type) || isZip(it.type));
+      const items = data.items.filter(it => isDir(it.type) || isZip(it.type) || (it.type === 'file' && isVideo(it.name)));
       const galleryItems = items.map(it => ({
-        name: it.name, type: it.type,
+        name: it.name, type: it.type === 'file' ? 'video' : it.type,
         path: joinPath(loadPath, it.name),
         isZip: isZip(it.type),
-        icon: isZip(it.type) ? '🗜️' : '📁',
-        sizeLabel: isZip(it.type) ? fmtSize(it.size) : '',
+        isVideo: it.type === 'file' && isVideo(it.name),
+        icon: it.type === 'file' ? '🎬' : (isZip(it.type) ? '🗜️' : '📁'),
+        sizeLabel: it.size ? fmtSize(it.size) : '',
         cover: null, coverLoaded: false, coverError: false,
       }));
       window._g.loading = false;
@@ -1270,25 +1621,29 @@ const GalleryView = {
     const type = card.dataset.type;
     const name = card.dataset.name;
 
-    const result = await fetchCoverItem(path);
-    if (!result) return;
-    const { item: coverItem, coverPath } = result;
-
     let url;
-    if (isZip(type)) {
-      const low = coverPath.toLowerCase();
-      let zipBoundary = -1;
-      for (const ext of ZIP_EXTS) {
-        const idx = low.indexOf('.' + ext);
-        if (idx !== -1) { zipBoundary = idx + ext.length + 1; break; }
-      }
-      const internalDir = zipBoundary > 0 ? coverPath.slice(zipBoundary).replace(/^\/+/, '') : '';
-      const internalPath = internalDir ? internalDir + '/' + coverItem.name : coverItem.name;
-      const encodedInternal = internalPath.split('/').map(s => encodeURIComponent(s)).join('/');
-      url = apiUrl('/zip' + encodeFilePath(path) + '/' + encodedInternal);
+    if (type === 'video') {
+      url = ''; // video cards use default icon, no thumbnail
     } else {
-      const rawUrl = fileUrl(coverPath, coverItem.name);
-      url = apiUrl('/img' + rawUrl + '?w=360&h=504&fit=cover&q=82');
+      const result = await fetchCoverItem(path);
+      if (!result) return;
+      const { item: coverItem, coverPath } = result;
+
+      if (isZip(type)) {
+        const low = coverPath.toLowerCase();
+        let zipBoundary = -1;
+        for (const ext of ZIP_EXTS) {
+          const idx = low.indexOf('.' + ext);
+          if (idx !== -1) { zipBoundary = idx + ext.length + 1; break; }
+        }
+        const internalDir = zipBoundary > 0 ? coverPath.slice(zipBoundary).replace(/^\/+/, '') : '';
+        const internalPath = internalDir ? internalDir + '/' + coverItem.name : coverItem.name;
+        const encodedInternal = internalPath.split('/').map(s => encodeURIComponent(s)).join('/');
+        url = apiUrl('/zip' + encodeFilePath(path) + '/' + encodedInternal);
+      } else {
+        const rawUrl = fileUrl(coverPath, coverItem.name);
+        url = apiUrl('/img' + rawUrl + '?w=360&h=504&fit=cover&q=82');
+      }
     }
 
     const alpineItem = window._g.items.find(it => it.name === name && it.path === path);

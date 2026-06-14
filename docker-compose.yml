@@ -9,8 +9,32 @@ services:
       - ${PLUS_LOCAL_PATH:-./data/}:/data
       - ramdisk:/mnt/ramdisk
       - ./html:/usr/local/bin/html
+      - /onas/ssd1:/data/ssd1
+      - /data/gallery:/data/gallery
     env_file:
       - .env
+    networks:
+      - imgproxy_net
+
+  aria2:
+    container_name: aria2
+    image: p3terx/aria2-pro
+    restart: always
+    ports:
+      - "6800:6800/tcp"
+      - "6888:6888/udp"
+      - "6888:6888/tcp"
+    volumes:
+      - /data/gallery/completed:/downloads/completed
+      - /data/gallery/downloading:/downloads
+      - ./aria2-conf:/config
+    environment:
+      - TZ=Asia/Shanghai
+      - UMASK_SET=010
+      - PUID=1000
+      - PGID=1000
+      - RPC_SECRET=ariavete
+      - SPECIAL_MODE=move
     networks:
       - imgproxy_net
 

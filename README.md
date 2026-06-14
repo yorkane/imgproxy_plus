@@ -7,6 +7,8 @@
 - 🖼️ **高性能图片处理** — imgproxy + libvips，缩放/裁切/格式转换/水印一键完成
 - 📂 **文件管理** — WebDAV + HTTP 双协议访问，HTML 目录浏览，原始文件直出
 - 📦 **ZIP 透明浏览** — 无需解压直接浏览 ZIP/CBZ 内部（GBK/Shift-JIS 自动编码检测）
+- 🗄️ **Gallery 自动归档** — 定时扫描目录，解压→分组→转换→打包 CBZ，并发转换
+- 🎬 **视频浏览** — Gallery 内浏览/播放视频文件，支持 ZIP 内视频播放
 - 🎨 **内置 SPA** — Gallery 漫画阅读器、图片编辑器、序列编辑器
 - 🔒 **安全认证** — URL 签名 + Basic Auth + IP 白名单
 - 🏷️ **URL 前缀** — 可作为二级目录部署在其他网站之下
@@ -66,7 +68,9 @@ HTTP 请求 → imgproxy_plus (Go, :8080) ──┐
 | `/api/upload/<path>` | POST | 上传文件 |
 | `/api/img` | POST | 实时图片处理 |
 | `/api/batch-img` | POST | 批量处理 |
-| `/api/gallerize` | POST | 画廊目录整理 |
+| `/api/gallerize` | POST | Gallery 自动归档（type=v2） |
+| `/api/archive-status` | GET | 查看 archive 处理进度和日志 |
+| `/api/migrate-covers` | POST | 迁移旧封面到 `__cover.jfif` |
 | `/zip/<archive>/<inner>` | GET | ZIP 内文件直出 |
 | `/<data_path>` | GET | 原始文件直出 / HTML 目录浏览 |
 | `/or-gallery` | GET | Gallery 画廊阅读器 |
@@ -106,6 +110,15 @@ HTTP 请求 → imgproxy_plus (Go, :8080) ──┐
 | `AUTH_IP_WHITELIST` | `` | 免认证 IP |
 | `ZIP_EXTS` | `zip,cbz` | ZIP 扩展名 |
 | `FILEAPI_DISABLE` | `false` | 禁用文件管理 API |
+| `GALLERY_AUTO_ENABLED` | `false` | 启用自动归档 |
+| `GALLERY_SCAN_DIR` | `/data/ssd1/aria2/completed` | 扫描源目录 |
+| `GALLERY_ARCHIVE_DIR` | `/data/ssd1/aria2/archived` | CBZ 输出目录 |
+| `GALLERY_SCAN_INTERVAL` | `1800` | 扫描间隔（秒） |
+| `GALLERY_ARCHIVE_FMT` | `webp` | 输出格式（webp/avif） |
+| `GALLERY_ARCHIVE_W` | `2560` | 转换最大宽度 |
+| `GALLERY_ARCHIVE_H` | `2560` | 转换最大高度 |
+| `GALLERY_ARCHIVE_Q` | `90` | 转换质量 |
+| `GALLERY_ARCHIVE_CONCURRENCY` | `0` | 并发转换数（0=CPU-2） |
 
 ### imgproxy
 
@@ -148,7 +161,9 @@ imgproxy_plus/
 ├── entrypoint.sh            # 容器启动脚本（imgproxy + imgproxy_plus）
 ├── go.mod / go.sum
 ├── internal/
-│   ├── api/                 # 文件管理 API (ls/rm/move/mkdir/upload/img/batch/gallerize)
+│   ├── api/                 # 文件管理 API (ls/rm/move/mkdir/upload/img/batch/gallerize/migrate)
+│   ├── archive/              # Gallery 自动归档引擎
+│   │   └── unpack/           # 多格式解压 (zip/tar/rar/7z/xz/pdf)
 │   ├── auth/                # 认证中间件
 │   ├── config/              # 环境变量配置
 │   ├── img/                 # /img/ 图片处理 handler

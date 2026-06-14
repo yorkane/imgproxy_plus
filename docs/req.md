@@ -16,9 +16,12 @@
 - **原始文件直出** — 任何数据目录下的文件可通过 HTTP GET 直接访问
 - **压缩包透明浏览** — ZIP/CBZ 虚拟文件系统（无需解压即可浏览内部），GBK / Shift-JIS 编码自动检测
 - **图片/漫画画廊** — 内置 SPA 画廊阅读器，支持目录和 ZIP 直接阅读
+- **Gallery 自动归档** — 定时扫描源目录，多格式解压→智能分组→并发转换→CBZ 打包
+- **视频浏览** — Gallery 内浏览/播放视频文件，支持 ZIP 内视频播放，长按 2 倍速
 - **文件管理 API** — JSON RESTful API 覆盖增删改查
 - **URL 前缀支持** — 可作为二级目录部署在其他网站之下（`PLUS_URL_PREFIX`）
 - **认证与安全** — imgproxy 原生 URL 签名 + Basic Auth + IP 白名单
+- **优雅关闭** — SIGTERM 等待当前 archive 任务完成后退出
 
 ---
 
@@ -104,7 +107,9 @@
 | `/api/upload/<path>` | POST | **扩展层** | 上传文件（raw body） |
 | `/api/img` | POST | **扩展层** → imgproxy | 实时图片处理（RAM Disk 桥接） |
 | `/api/batch-img` | POST | **扩展层** → imgproxy | 批量图片处理（本地/远程双模式） |
-| `/api/gallerize` | POST | **扩展层** → imgproxy | Gallery 目录整理 |
+| `/api/gallerize` | POST | **扩展层** → imgproxy | Gallery 自动归档（type=v2） |
+| `/api/archive-status` | GET | **扩展层** | 查看 archive 处理进度和日志 |
+| `/api/migrate-covers` | POST | **扩展层** | 迁移 CBZ 内旧封面到 `__cover.jfif` |
 | `/` | 全方法 | **扩展层** | 导航页（GET）+ WebDAV（PROPFIND/MKCOL等） |
 | `/<data_path>` | GET | **扩展层** | 原始文件直出（文件）/ HTML 目录浏览（目录） |
 | `/or-gallery` | GET | **扩展层** 静态 | Gallery 画廊 SPA |
@@ -267,13 +272,74 @@ http://host/imgproxy/api/ls/        → 目录列表
 ### 4.7 其他 API
 
 与原始设计一致，已全部实现：
-- `GET /api/ls/<path>` — 目录 JSON API（分页、排序、ZIP 内浏览）
+- `GET /api/ls/<path>` — 目录 JSON API（分页、排序、ZIP 内浏览），`__cover.jfif` 始终排序第一
 - `DELETE /api/rm/<path>` — 删除
 - `POST /api/move` — 移动/改名
 - `POST /api/mkdir/<path>` — 创建目录
 - `POST /api/upload/<path>` — 上传文件
 - `POST /api/batch-img` — 批量图片处理
-- `POST /api/gallerize` — Gallery 目录整理
+- `POST /api/gallerize` — Gallery 自动归档（type=v2）
+- `GET /api/archive-status` — 查看 archive 实时进度和日志
+- `POST /api/migrate-covers` — 迁移 CBZ 内旧封面到 `__cover.jfif`
+
+---
+
+## 4.8 Gallery Archive 自动归档引擎
+
+> 详细设计见 `docs/gallery_archive.md`。
+
+Gallery Archive 是内置于 imgproxy_plus 的自动归档引擎，替代旧版手动 `/api/gallerize` (v1)。
+
+### 核心流程
+
+```
+定时扫描 GALLERY_SCAN_DIR → 解压多格式压缩包 → 目录扁平化 → 
+智能分组构建 → 并发图片转换(.jfif) → 封面生成(__cover.jfif) → 
+CBZ 打包(ZIP Store) → 移动到 ARCHIVE_DIR
+```
+
+### 关键特性
+
+- **多格式解压**：zip / tar / xz / gz / rar / 7z / cbz / cbr / pdf
+- **智能分组**：子目录图片 ≥ `MIN_CHAPTER`(5) 独立 CBZ，否则合并到父级
+- **并发转换**：`GALLERY_ARCHIVE_CONCURRENCY` 控制并发数（0=CPU核数-2）
+- **封面自动生成**：`__cover.jfif`（360x504, g:sm, q=80），优先选含 "cover" 的文件
+- **防重复**：`.jfif` 后缀标记已转换文件
+- **失败隔离**：处理失败目录标记 `_failed`，下次跳过
+- **优雅关闭**：SIGTERM 等待当前任务完成后退出
+- **进度监控**：`GET /api/archive-status` 实时查看状态，Gallery 界面可见
+
+### 新增配置项
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `GALLERY_AUTO_ENABLED` | `false` | 启用自动扫描 |
+| `GALLERY_SCAN_DIR` | `/data/ssd1/aria2/completed` | 扫描源目录 |
+| `GALLERY_ARCHIVE_DIR` | `/data/ssd1/aria2/archived` | CBZ 输出目录 |
+| `GALLERY_SCAN_INTERVAL` | `1800` | 扫描间隔(秒) |
+| `GALLERY_ARCHIVE_FMT` | `webp` | 输出格式 |
+| `GALLERY_ARCHIVE_W` | `2560` | 转换宽度 |
+| `GALLERY_ARCHIVE_H` | `2560` | 转换高度 |
+| `GALLERY_ARCHIVE_FIT` | `cover` | 缩放模式 |
+| `GALLERY_ARCHIVE_Q` | `90` | 转换质量 |
+| `GALLERY_ARCHIVE_MIN_KB` | `10` | 转换后最小 KB |
+| `GALLERY_ARCHIVE_MIN_CHAPTER` | `5` | 独立打包阈值 |
+| `GALLERY_ARCHIVE_CONCURRENCY` | `0` | 并发转换数 |
+
+### 手动触发
+
+```bash
+curl -u user:pass -X POST /api/gallerize \
+  -d '{"path": "3844145", "type": "v2"}'
+```
+
+### 封面迁移
+
+```bash
+# 清理 archived 中所有 CBZ 的旧封面 (##cover.jiff / --cover.jfif)
+# 用第一张图片重新生成 __cover.jfif
+curl -u user:pass -X POST /api/migrate-covers
+```
 
 ---
 
@@ -282,9 +348,18 @@ http://host/imgproxy/api/ls/        → 目录列表
 | 页面 | URL | 功能 |
 |------|-----|------|
 | **导航首页** | `/` | 功能入口导航卡片 |
-| **Gallery 画廊** | `/or-gallery` | 封面卡片浏览 + 内置漫画阅读器，支持目录和 ZIP/CBZ |
+| **Gallery 画廊** | `/or-gallery` | 封面卡片浏览 + 内置漫画阅读器 + **视频播放器** + **Archive 进度监控** |
 | **图片编辑器** | `/img-editor` | 裁切/缩放/旋转/翻转 PDF 处理等 |
 | **图片序列编辑器** | `/img-sequence` | 多图拖拽排序，导出 PDF/ZIP/CBZ |
+
+**视频播放器**：
+- 视频文件在 Gallery 中显示为 🎬 卡片
+- 点击进入独立视频播放模式，支持播放/暂停、进度拖拽、音量、0.5x-2x 速度、全屏
+- 长按视频 2 倍速播放
+- 控件栏 2 秒无操作自动隐藏，鼠标移动恢复
+- `[` `]` 切换上一个/下一个视频，Space 暂停，← → 快进/退
+- 进入时默认全屏（容器全屏，兼容桌面和移动端）
+- ZIP/CBZ 内视频通过 `/zip/` 透传说服播放
 
 **内置第三方库**（`html/libs/`）：
 - JSZip 3.10.1 — ZIP 处理
@@ -317,6 +392,18 @@ http://host/imgproxy/api/ls/        → 目录列表
 | `ZIPFS_TRANSPARENT` | `true` | ZIP 透明浏览 |
 | `API_PAGE_SIZE_MAX` | `200` | API 最大分页 |
 | `FILEAPI_DISABLE` | `false` | 禁用文件管理 API |
+| `GALLERY_AUTO_ENABLED` | `false` | 启用自动归档 |
+| `GALLERY_SCAN_DIR` | `/data/ssd1/aria2/completed` | 扫描源目录 |
+| `GALLERY_ARCHIVE_DIR` | `/data/ssd1/aria2/archived` | CBZ 输出目录 |
+| `GALLERY_SCAN_INTERVAL` | `1800` | 扫描间隔（秒） |
+| `GALLERY_ARCHIVE_FMT` | `webp` | 输出格式 |
+| `GALLERY_ARCHIVE_W` | `2560` | 转换宽度 |
+| `GALLERY_ARCHIVE_H` | `2560` | 转换高度 |
+| `GALLERY_ARCHIVE_FIT` | `cover` | 缩放模式 |
+| `GALLERY_ARCHIVE_Q` | `90` | 转换质量 |
+| `GALLERY_ARCHIVE_MIN_KB` | `10` | 最小文件大小 |
+| `GALLERY_ARCHIVE_MIN_CHAPTER` | `5` | 独立打包阈值 |
+| `GALLERY_ARCHIVE_CONCURRENCY` | `0` | 并发数（0=CPU-2） |
 
 ### 6.3 imgproxy 核心配置
 
