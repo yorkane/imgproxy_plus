@@ -202,7 +202,7 @@ CBZ:
 | 环境变量 | 类型 | 默认值 | 说明 |
 |----------|------|--------|------|
 | `GALLERY_AUTO_ENABLED` | bool | `false` | 启用自动扫描 |
-| `GALLERY_SCAN_DIR` | path | `/data/ssd1/aria2/completed` | 扫描源目录 |
+| `GALLERY_SCAN_DIR` | path | `/data/gallery/completed` | 扫描源目录 |
 | `GALLERY_ARCHIVE_DIR` | path | `/data/ssd1/aria2/archived` | CBZ 输出目录 |
 | `GALLERY_SCAN_INTERVAL` | int (秒) | `1800` | 扫描间隔，默认 30 分钟 |
 | `GALLERY_ARCHIVE_FMT` | string | `webp` | 输出格式：`webp` 或 `avif` |

@@ -154,7 +154,8 @@
 <div id="video-player" x-show="videoPlayerShow"
      @keydown.window="videoOnKey($event)"
      @mousemove="VideoPlayer._showControls()"
-     @touchstart="VideoPlayer._showControls()">
+     @touchstart="VideoPlayer._showControls(); VideoPlayer._onTouchStart($event)"
+     @touchend="VideoPlayer._onTouchEnd($event)">
   <div class="video-top-bar" :class="{ hidden: !videoControlsVisible }">
     <button class="btn" @click="videoClose">← 返回</button>
     <span x-text="videoTitle"></span>
@@ -1128,6 +1129,25 @@ const VideoPlayer = {
   _videos: [],
   _idx: -1,
   _hideTimer: null,
+  _swipeX: 0,
+  _swipeY: 0,
+  _swipeActive: false,
+
+  _onTouchStart(e) {
+    this._swipeX = e.changedTouches[0].clientX;
+    this._swipeY = e.changedTouches[0].clientY;
+    this._swipeActive = true;
+  },
+
+  _onTouchEnd(e) {
+    if (!this._swipeActive) return;
+    this._swipeActive = false;
+    const dx = e.changedTouches[0].clientX - this._swipeX;
+    const dy = e.changedTouches[0].clientY - this._swipeY;
+    // only horizontal swipe, minimum 50px
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx > 0) { this.prev(); } else { this.next(); }
+  },
 
   open(item, videos) {
     this._current = item;

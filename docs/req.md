@@ -314,7 +314,7 @@ CBZ 打包(ZIP Store) → 移动到 ARCHIVE_DIR
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `GALLERY_AUTO_ENABLED` | `false` | 启用自动扫描 |
-| `GALLERY_SCAN_DIR` | `/data/ssd1/aria2/completed` | 扫描源目录 |
+| `GALLERY_SCAN_DIR` | `/data/gallery/completed` | 扫描源目录 |
 | `GALLERY_ARCHIVE_DIR` | `/data/ssd1/aria2/archived` | CBZ 输出目录 |
 | `GALLERY_SCAN_INTERVAL` | `1800` | 扫描间隔(秒) |
 | `GALLERY_ARCHIVE_FMT` | `webp` | 输出格式 |
@@ -393,7 +393,7 @@ curl -u user:pass -X POST /api/migrate-covers
 | `API_PAGE_SIZE_MAX` | `200` | API 最大分页 |
 | `FILEAPI_DISABLE` | `false` | 禁用文件管理 API |
 | `GALLERY_AUTO_ENABLED` | `false` | 启用自动归档 |
-| `GALLERY_SCAN_DIR` | `/data/ssd1/aria2/completed` | 扫描源目录 |
+| `GALLERY_SCAN_DIR` | `/data/gallery/completed` | 扫描源目录 |
 | `GALLERY_ARCHIVE_DIR` | `/data/ssd1/aria2/archived` | CBZ 输出目录 |
 | `GALLERY_SCAN_INTERVAL` | `1800` | 扫描间隔（秒） |
 | `GALLERY_ARCHIVE_FMT` | `webp` | 输出格式 |
