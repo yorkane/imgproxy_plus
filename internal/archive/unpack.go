@@ -23,6 +23,7 @@ func UnpackAll(dirPath string) error {
 
 		archivePath := filepath.Join(dirPath, entry.Name())
 		destBase := filepath.Join(dirPath, ".tmp", strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
+		archiveName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 
 		slog.Info("unpacking", "archive", entry.Name())
 
@@ -53,7 +54,10 @@ func UnpackAll(dirPath string) error {
 			slog.Warn("remove archive failed", "path", archivePath, "error", err)
 		}
 
-		extractUnpacked(destBase, dirPath)
+		wrapperDir := filepath.Join(dirPath, archiveName)
+		os.MkdirAll(wrapperDir, 0755)
+		extractUnpacked(destBase, wrapperDir)
+		unpack.FlattenSingleWrapper(wrapperDir)
 	}
 
 	return nil
