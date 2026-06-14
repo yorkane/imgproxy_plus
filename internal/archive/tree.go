@@ -84,7 +84,7 @@ func buildTreeNode(node *treeNode, dirPath, prefix string) {
 			}
 			buildTreeNode(child, childDirPath, childName)
 			node.children = append(node.children, child)
-		} else if IsImageExt(name) {
+		} else if IsImageExt(name) && !strings.HasSuffix(strings.ToLower(name), ".webp") {
 			node.images = append(node.images, FileEntry{
 				AbsPath:  absPath,
 				RelPath:  name,

@@ -291,6 +291,9 @@ func cleanupSourceFiles(rootPath string) {
 		if basename == "__cover.jfif" {
 			return nil
 		}
+		if strings.HasSuffix(strings.ToLower(basename), ".webp") {
+			return nil
+		}
 		if IsImageExt(basename) && !IsJfifExt(basename) {
 			os.Remove(path)
 		}
