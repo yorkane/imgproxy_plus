@@ -61,7 +61,7 @@ func DetectAnimated(path string) bool {
 	}
 	defer f.Close()
 
-	buf := make([]byte, 30)
+	buf := make([]byte, 32)
 	n, _ := io.ReadFull(f, buf)
 	if n < 4 {
 		return false
@@ -73,8 +73,10 @@ func DetectAnimated(path string) bool {
 
 	if bytes.HasPrefix(buf, []byte("RIFF")) && n >= 12 &&
 		bytes.Equal(buf[8:12], []byte("WEBP")) {
-		if n >= 17 && bytes.HasPrefix(buf[12:], []byte("VP8X")) {
-			if buf[16]&0x10 != 0 {
+		if n >= 21 && bytes.HasPrefix(buf[12:], []byte("VP8X")) {
+			// VP8X flags are 4 bytes at offset 20-23, bit 1 (0x02) = animation
+			// WebP spec: offset 20 = flags[0], animation = bit 1
+			if buf[20]&0x02 != 0 {
 				return true
 			}
 		}
