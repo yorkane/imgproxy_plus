@@ -58,6 +58,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fullPath = firstImg
 	}
 
+	if hasGifParent(fullPath) {
+		slog.Debug("gif parent directory detected, passing through", "path", imgPath)
+		w.Header().Set("X-Imgproxy", "passthrough-gif-dir")
+		http.ServeFile(w, r, fullPath)
+		return
+	}
+
 	sourceEncoded := encodeLocalSource(fullPath)
 	query := r.URL.Query()
 
@@ -162,8 +169,8 @@ func detectAnimated(path string) bool {
 
 	if bytes.HasPrefix(buf, []byte("RIFF")) && n >= 12 &&
 		bytes.Equal(buf[8:12], []byte("WEBP")) {
-		if n >= 17 && bytes.HasPrefix(buf[12:], []byte("VP8X")) {
-			if buf[16]&0x10 != 0 {
+		if n >= 21 && bytes.HasPrefix(buf[12:], []byte("VP8X")) {
+			if buf[20]&0x10 != 0 {
 				return true
 			}
 		}
@@ -175,6 +182,24 @@ func detectAnimated(path string) bool {
 	}
 
 	return false
+}
+
+func hasGifParent(fullPath string) bool {
+	dir := filepath.Dir(fullPath)
+	for {
+		base := strings.ToLower(filepath.Base(dir))
+		if base == "" || base == "." || base == "/" {
+			return false
+		}
+		if strings.Contains(base, "gif") {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
 }
 
 var imgExts = map[string]bool{
