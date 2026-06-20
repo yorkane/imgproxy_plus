@@ -1,16 +1,15 @@
 services:
   imgproxy_plus:
     image: imgproxy_plus:latest
-    container_name: imgproxy_plus
+    container_name: imp
     restart: unless-stopped
     ports:
       - "8082:8080"
     volumes:
       - ${PLUS_LOCAL_PATH:-./data/}:/data
+      - /onas/ssd1:/data/ssd1/
       - ramdisk:/mnt/ramdisk
       - ./html:/usr/local/bin/html
-      - /onas/ssd1:/data/ssd1
-      - /data/gallery:/data/gallery
     env_file:
       - .env
     networks:
