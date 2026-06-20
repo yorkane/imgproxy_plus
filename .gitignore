@@ -35,3 +35,9 @@ go.work.sum
 # Dev artifacts
 /data/
 /aria2-conf/
+# Local environment with secrets (box connection / DB credentials)
+box.env
+
+# Python bytecode (skill scripts)
+__pycache__/
+*.pyc

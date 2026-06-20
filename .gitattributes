@@ -1,0 +1,22 @@
+# Normalize line endings: store & checkout text files as LF
+* text=auto eol=lf
+
+# Ensure source files use LF
+*.go        text eol=lf
+*.js        text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sh        text eol=lf
+*.mod       text eol=lf
+*.sum       text eol=lf
+*.sql       text eol=lf
+Dockerfile  text eol=lf
+LICENSE     text eol=lf
+
+# Vendored/minified libs: treat as binary to avoid reformatting
+html/libs/*.min.js binary
+html/libs/*.min.css binary
