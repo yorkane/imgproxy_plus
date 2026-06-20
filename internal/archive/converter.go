@@ -79,7 +79,7 @@ func FilterSmallFile(path string, minKB int) bool {
 
 func convertCover(client *proxy.ImgproxyClient, srcPath, dstPath string) error {
 	resizeOpt := "rs:fill:360:504"
-	gravityOpt := "g:sm"
+	gravityOpt := "g:obj:face"
 	qualityOpt := "q:80"
 	formatOpt := "format:webp"
 	u := client.BuildProcessURL(resizeOpt, gravityOpt, qualityOpt, formatOpt, "local:///"+srcPath)

@@ -74,9 +74,7 @@ func DetectAnimated(path string) bool {
 	if bytes.HasPrefix(buf, []byte("RIFF")) && n >= 12 &&
 		bytes.Equal(buf[8:12], []byte("WEBP")) {
 		if n >= 21 && bytes.HasPrefix(buf[12:], []byte("VP8X")) {
-			// VP8X flags are 4 bytes at offset 20-23, bit 1 (0x02) = animation
-			// WebP spec: offset 20 = flags[0], animation = bit 1
-			if buf[20]&0x02 != 0 {
+			if buf[20]&0x10 != 0 {
 				return true
 			}
 		}
@@ -88,6 +86,21 @@ func DetectAnimated(path string) bool {
 	}
 
 	return false
+}
+
+func HasAnimatedWebP(dirPath string) bool {
+	var found bool
+	filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || found {
+			return nil
+		}
+		if strings.ToLower(filepath.Ext(path)) == ".webp" && DetectAnimated(path) {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 func HasCoverWord(name string) bool {

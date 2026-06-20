@@ -53,6 +53,19 @@ func ProcessOne(rootPath string, cfg *config.Config) (*ArchiveResult, error) {
 
 	RemoveEmptyDirs(rootPath)
 
+	if HasAnimatedWebP(rootPath) {
+		gifsDir := "/data/gifs"
+		os.MkdirAll(gifsDir, 0755)
+		targetPath := filepath.Join(gifsDir, filepath.Base(rootPath))
+		if err := moveDir(rootPath, targetPath); err != nil {
+			slog.Warn("move to gifs failed", "dir", filepath.Base(rootPath), "error", err)
+			return nil, err
+		}
+		slog.Warn("moved to gifs due to animated webp", "dir", filepath.Base(rootPath))
+		LogEvent("INFO", "skip_animated_webp", filepath.Base(rootPath), "", nil)
+		return &ArchiveResult{}, nil
+	}
+
 	groups, err := BuildTree(rootPath, cfg)
 	if err != nil {
 		MarkFailed(rootPath, err)
@@ -396,6 +409,40 @@ func tryFlattenWrapper(dirPath string) {
 			}
 		}
 	}
+}
+
+func moveDir(src, dst string) error {
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+	if !strings.Contains(err.Error(), "cross-device") &&
+		!strings.Contains(err.Error(), "invalid cross-device") {
+		return err
+	}
+	if err := copyDir(src, dst); err != nil {
+		return fmt.Errorf("copy (cross-device move): %w", err)
+	}
+	os.RemoveAll(src)
+	return nil
+}
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, _ := filepath.Rel(src, path)
+		targetPath := filepath.Join(dst, relPath)
+		if info.IsDir() {
+			return os.MkdirAll(targetPath, info.Mode())
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(targetPath, data, info.Mode())
+	})
 }
 
 
