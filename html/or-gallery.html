@@ -363,10 +363,13 @@ document.addEventListener('alpine:init', () => {
     videoSpeedUp() { VideoPlayer._speedUp(); },
     videoSpeedRestore() { VideoPlayer._speedRestore(); },
     videoOnKey(e) {
-      if (e.key === 'Escape') { VideoPlayer.close(); return; }
+      if (!this.videoPlayerShow) return;
+      if (e.key === 'Escape' || e.key === 'b' || e.key === 'B') { e.preventDefault(); VideoPlayer.close(); return; }
       if (e.key === ' ') { e.preventDefault(); VideoPlayer.togglePlay(); return; }
       if (e.key === 'ArrowLeft') { e.preventDefault(); VideoPlayer.seek(-5); return; }
       if (e.key === 'ArrowRight') { e.preventDefault(); VideoPlayer.seek(5); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); VideoPlayer.adjustVolume(5); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); VideoPlayer.adjustVolume(-5); return; }
       if (e.key === 'f' || e.key === 'F') { VideoPlayer.toggleFullscreen(); return; }
       if (e.key === '[') { VideoPlayer.prev(); return; }
       if (e.key === ']') { VideoPlayer.next(); return; }
@@ -468,6 +471,7 @@ document.addEventListener('alpine:init', () => {
 
     onKeydown(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (this.videoPlayerShow) return;
 
       if (this.showReader) {
         switch (e.key) {
@@ -1165,6 +1169,8 @@ const VideoPlayer = {
     g.videoProgress = 0;
     g.videoSpeed = 1;
 
+    g.videoVolume = LS.int('or-video-volume', 80);
+
     this._video = document.getElementById('vp-video');
     if (this._video) {
       this._video.volume = g.videoVolume / 100;
@@ -1228,6 +1234,17 @@ const VideoPlayer = {
   setVolume(vol) {
     const v = document.getElementById('vp-video');
     if (v) { v.volume = vol / 100; }
+    const g = window._g;
+    if (g) { g.videoVolume = vol; }
+    LS.set('or-video-volume', vol);
+  },
+
+  adjustVolume(delta) {
+    const g = window._g;
+    if (!g) return;
+    let newVol = parseInt(g.videoVolume) + delta;
+    newVol = Math.max(0, Math.min(100, newVol));
+    this.setVolume(newVol);
   },
 
   setSpeed(rate) {
