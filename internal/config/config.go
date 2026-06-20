@@ -38,6 +38,7 @@ type Config struct {
 	GalleryArchiveMinKB      int
 	GalleryArchiveMinChapter int
 	GalleryArchiveConcurrency int
+	GalleryCompleteWebhookURL string
 }
 
 func Load() *Config {
@@ -156,6 +157,8 @@ func Load() *Config {
 		}
 	}
 	c.GalleryArchiveConcurrency = concurrency
+
+	c.GalleryCompleteWebhookURL = env("GALLERY_COMPLETE_WEBHOOK_URL", "")
 
 	return c
 }

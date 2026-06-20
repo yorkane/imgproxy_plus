@@ -133,6 +133,12 @@ func ProcessOne(rootPath string, cfg *config.Config) (*ArchiveResult, error) {
 		"cbz": len(result.CBZ), "converted": stats.Converted, "duration": time.Since(start),
 	})
 
+	// Notify external system (n8n) that this gallery finished archiving.
+	// Fire-and-forget; skipped when GALLERY_COMPLETE_WEBHOOK_URL is empty.
+	if len(result.CBZ) > 0 {
+		FireCompleteWebhook(cfg.GalleryCompleteWebhookURL, filepath.Base(rootPath), result.CBZ, stats, start)
+	}
+
 	return result, nil
 }
 
