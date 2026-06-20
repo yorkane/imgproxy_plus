@@ -2574,8 +2574,23 @@ document.addEventListener('alpine:init', () => {
   GalleryView.init();
   Reader.init();
   Gallerize.init();
+  // Defer initial navigation until the Alpine 'gallery' component has
+  // initialized and set window._g. The component init() runs after
+  // Alpine.data() registration; navigating before window._g is ready
+  // makes Reader.open() throw on window._g.isMobile when a path/reader
+  // is present in the URL (cold-start into reader/gallery).
   const params = Router.getParams();
-  App.navigate(params.path, true, { page: params.page, reader: params.reader });
+  const start = () => App.navigate(params.path, true, { page: params.page, reader: params.reader });
+  if (window._g) {
+    start();
+  } else if (window.Alpine && Alpine.nextTick) {
+    Alpine.nextTick(start);
+  } else {
+    // Fallback: poll until window._g is set by the component init()
+    const wait = setInterval(() => {
+      if (window._g) { clearInterval(wait); start(); }
+    }, 16);
+  }
 });
 </script>
 </body>
