@@ -93,7 +93,7 @@ NocoBase UI: 🖼️ 归档画廊（GridCard，封面 + 标题 + 状态）
 ### 2.4 imgproxy_plus URL 模式
 
 ```
-封面:  https://q.ws.gatepro.cn:99/gly/zip/ssd1/aria2/archived/{cbz}/__cover.jfif
+封面:  https://q.ws.gatepro.cn:99/gly/zip/archived/{cbz}/__cover.jfif
 阅读器: https://q.ws.gatepro.cn:99/gly/or-gallery?path={URL-encoded-full-path}
 ```
 
@@ -246,7 +246,7 @@ docker compose build && docker compose up -d
 ### 4.3 回填脚本（一次性）
 
 `/tmp/backfill.py`（已在本次执行完，备份留存）：
-- 扫 `/ssd1/aria2/archived/*.cbz`
+- 扫 `/archived/*.cbz`
 - 解析 `{gid}_{token}` 前缀
 - upsert eh_gallery + 标记 torrent/page 为 archived
 - 缺 cover 的 fallback 到第一张图

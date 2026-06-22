@@ -105,8 +105,8 @@ func Load() *Config {
 	c.ImgproxySalt = env("IMGPROXY_SALT", "")
 
 	c.GalleryAutoEnabled = strings.ToLower(env("GALLERY_AUTO_ENABLED", "false")) == "true"
-	c.GalleryScanDir = env("GALLERY_SCAN_DIR", "/data/gallery/completed")
-	c.GalleryArchiveDir = env("GALLERY_ARCHIVE_DIR", "/data/ssd1/aria2/archived")
+	c.GalleryScanDir = env("GALLERY_SCAN_DIR", "/data/aria2/completed")
+	c.GalleryArchiveDir = env("GALLERY_ARCHIVE_DIR", "/data/archived")
 	c.GalleryArchiveFmt = env("GALLERY_ARCHIVE_FMT", "webp")
 	c.GalleryArchiveFit = env("GALLERY_ARCHIVE_FIT", "cover")
 
