@@ -82,6 +82,20 @@ func serveZipFile(w http.ResponseWriter, r *http.Request, zipPath, innerPath str
 
 	innerPath = strings.Trim(innerPath, "/")
 
+	// Explicit cover request via ?cover=1: return the best-ranked cover
+	// image from the archive regardless of innerPath. This is the primary
+	// cover entry point, e.g. /gly/zip/path/to/gallery.cbz?cover=1
+	if r.URL.Query().Has("cover") {
+		if cover := pickCoverFile(zr.File); cover != nil {
+			// Cache friendly: cover selection is deterministic per archive.
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			serveZipEntry(w, r, cover)
+			return
+		}
+		http.Error(w, "no cover image in archive", http.StatusNotFound)
+		return
+	}
+
 	for _, f := range zr.File {
 		name := strings.Trim(ziputil.DecodeName(f), "/")
 		if strings.EqualFold(name, innerPath) || name == innerPath {
@@ -95,10 +109,9 @@ func serveZipFile(w http.ResponseWriter, r *http.Request, zipPath, innerPath str
 		}
 	}
 
-	// Fallback: if the missing entry looks like a cover request, serve the
-	// best-ranked cover image from the archive instead of a 404. This lets
-	// cover URLs (e.g. __cover.jfif) keep working for archives that were
-	// produced by older tooling and lack a dedicated cover file.
+	// Backward-compatible fallback: a cover-like innerPath that does not
+	// exist (e.g. __cover.jfif on archives produced by older tooling) falls
+	// back to the best-ranked cover image instead of a 404.
 	if isCoverRequest(innerPath) {
 		if cover := pickCoverFile(zr.File); cover != nil {
 			serveZipEntry(w, r, cover)
