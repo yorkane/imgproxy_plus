@@ -90,30 +90,63 @@ func serveZipFile(w http.ResponseWriter, r *http.Request, zipPath, innerPath str
 				return
 			}
 
-			rc, err := f.Open()
-			if err != nil {
-				http.Error(w, "cannot read zip entry", http.StatusInternalServerError)
-				return
-			}
-			defer rc.Close()
+			serveZipEntry(w, r, f)
+			return
+		}
+	}
 
-			mime := mimeByExt(f.Name)
-			w.Header().Set("Content-Type", mime)
-			w.Header().Set("Content-Length", fmt.Sprintf("%d", f.UncompressedSize64))
-			w.Header().Set("Accept-Ranges", "bytes")
-
-			if r.Method == http.MethodHead {
-				return
-			}
-
-			if _, err := io.Copy(w, rc); err != nil {
-				slog.Warn("zip serve copy error", "error", err)
-			}
+	// Fallback: if the missing entry looks like a cover request, serve the
+	// best-ranked cover image from the archive instead of a 404. This lets
+	// cover URLs (e.g. __cover.jfif) keep working for archives that were
+	// produced by older tooling and lack a dedicated cover file.
+	if isCoverRequest(innerPath) {
+		if cover := pickCoverFile(zr.File); cover != nil {
+			serveZipEntry(w, r, cover)
 			return
 		}
 	}
 
 	http.Error(w, "not found in zip", http.StatusNotFound)
+}
+
+// serveZipEntry streams a single zip entry to the response with appropriate
+// headers. It is shared by the direct-match path and the cover fallback path.
+func serveZipEntry(w http.ResponseWriter, r *http.Request, f *zip.File) {
+	rc, err := f.Open()
+	if err != nil {
+		http.Error(w, "cannot read zip entry", http.StatusInternalServerError)
+		return
+	}
+	defer rc.Close()
+
+	mime := mimeByExt(f.Name)
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", f.UncompressedSize64))
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	if r.Method == http.MethodHead {
+		return
+	}
+
+	if _, err := io.Copy(w, rc); err != nil {
+		slog.Warn("zip serve copy error", "error", err)
+	}
+}
+
+// isCoverRequest reports whether innerPath looks like a cover file request
+// (a cover placeholder or any image whose stem mentions "cover"). Used to
+// decide whether to fall back to the best-ranked cover in the archive.
+func isCoverRequest(innerPath string) bool {
+	base := filepath.Base(innerPath)
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	if isImageExt(base) {
+		if strings.HasPrefix(strings.ToLower(base), "__cover") ||
+			strings.HasPrefix(strings.ToLower(base), "##cover") ||
+			strings.Contains(strings.ToLower(stem), "cover") {
+			return true
+		}
+	}
+	return false
 }
 
 func mimeByExt(name string) string {
