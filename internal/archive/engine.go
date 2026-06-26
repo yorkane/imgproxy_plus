@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -92,6 +93,18 @@ func ProcessOne(rootPath string, cfg *config.Config) (*ArchiveResult, error) {
 	result := &ArchiveResult{}
 	stats := Stats{}
 
+	// Open a DB connection for ehen metadata resolution (if PG configured)
+	var metaDB *sql.DB
+	if cfg.EhenEnabled && cfg.PGHost != "" && cfg.PGPass != "" {
+		var dbErr error
+		metaDB, dbErr = openMetaDB(cfg)
+		if dbErr != nil {
+			slog.Warn("ehen db open failed, will move files without DB update", "error", dbErr)
+		} else {
+			defer metaDB.Close()
+		}
+	}
+
 	for _, group := range groups {
 		if IsShuttingDown() {
 			slog.Warn("archive interrupted", "group", group.Name)
@@ -114,6 +127,13 @@ func ProcessOne(rootPath string, cfg *config.Config) (*ArchiveResult, error) {
 		stats.RemovedSmall += groupStats.RemovedSmall
 
 		if cbzPath != "" {
+			// Route CBZ to ehen directory structure with metadata resolution.
+			// If the file was moved, cbzPath will no longer exist; use the
+			// basename only (n8n webhook handles the rest).
+			if cfg.EhenEnabled {
+				ehenSt := RouteCBZToEhen(metaDB, cbzPath, cfg)
+				_ = ehenSt // stats tracked internally via logs
+			}
 			result.CBZ = append(result.CBZ, filepath.Base(cbzPath))
 		}
 	}

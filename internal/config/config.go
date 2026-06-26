@@ -39,6 +39,15 @@ type Config struct {
 	GalleryArchiveMinChapter int
 	GalleryArchiveConcurrency int
 	GalleryCompleteWebhookURL string
+
+	EhenEnabled      bool
+	EhenDir          string
+	EhenMetaWebhook  string
+	PGHost           string
+	PGPort           int
+	PGUser           string
+	PGPass           string
+	PGDatabase       string
 }
 
 func Load() *Config {
@@ -159,6 +168,20 @@ func Load() *Config {
 	c.GalleryArchiveConcurrency = concurrency
 
 	c.GalleryCompleteWebhookURL = env("GALLERY_COMPLETE_WEBHOOK_URL", "")
+
+	c.EhenEnabled = strings.ToLower(env("EHEN_ENABLED", "true")) == "true"
+	c.EhenDir = env("EHEN_DIR", "/data/ehen")
+	c.EhenMetaWebhook = env("EHEN_META_WEBHOOK", "https://n8n.c.gatepro.cn/webhook/search_gallery_by_id_or_filename")
+
+	c.PGHost = env("PGHOST", "")
+	c.PGUser = env("PGUSER", "n8n")
+	c.PGPass = env("PGPASSWORD", "")
+	c.PGDatabase = env("PGDATABASE", "noco21")
+	pgPort, err := strconv.Atoi(env("PGPORT", "5432"))
+	if err != nil || pgPort <= 0 {
+		pgPort = 5432
+	}
+	c.PGPort = pgPort
 
 	return c
 }

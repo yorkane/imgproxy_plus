@@ -95,3 +95,77 @@ WORKERS=12 CQ=18 OUT_WIDTH=1920 OUT_HEIGHT=1080 python3 cbz2mp4.py all /data/gal
 2. PIL 逐帧读取动画 WebP，rawvideo pipe → ffmpeg hevc_nvenc (p7, cq=21)
 3. 按角色名（文件名 `_N.mp4` 前的部分）分组，concat demuxer 合并
 4. `scale→pad` 缩放至 1920×1080（保持比例，黑边填充）
+
+
+## meta-api 元数据查询和处理
+ https://n8n.c.gatepro.cn/webhook/search_gallery_by_id_or_filename
+接口中,可以通过post json 数据来查询 gallery的meta 信息:
+ { "file_name": "08 [AI Generated]", 
+    "gallery_id":  113 
+}
+
+### archived 目录文件查询方式
+/onas/16t4/archived 下包含了类似 `4011955_2a90e31578-Toph cosplay.cbz` 文件或者目录
+其中 `4011955` 是gallery_id  `Toph cosplay` 是 file_name
+可以通过这些信息 去 meta-api 查询信息.
+当活得到了 元数据类似:
+{
+  "match": [
+    {
+      "url": "https://e-hentai.org/g/4002166/28219bd6d3/",
+      "title": "キャロン08 [AI Generated]",
+      "gallery_id": "4002166",
+      "uploader": "francocute",
+      "pages": 83,
+      "tags": "parody:cream lemon,character:caron,female:ponytail,other:ai generated",
+      "category": "Misc",
+      "thumbnail": "https://ehgt.org/w/02/443/86222-red95tne.webp",
+      "posted_date": "2026-06-21 03:48",
+      "rating": 0
+    }
+  ]
+}
+
+### 画廊库结构:
+扫描 /onas/16t4/archived/ 下的cbz 文件, 获得cbz 元数据后,将cbz文件移动到如下地址
+/onas/16t4/ehen/{category}/{uploader}/{gallery_id}-{file_name}.cbz
+最终更新 noco21 数据的 eh_gallery-260620 表的`reader_url` 字段为 `/ehen/{category}/{uploader}/{gallery_id}-{file_name}.cbz`
+
+## ehen 自动路由 (Go 集成)
+
+> **实现：** `internal/archive/ehen.go`
+> 原 Python 脚本 `scripts/move_cbz_to_ehen.py` 的逻辑已移植到 Go，直接在 archive 引擎中运行。
+
+### 工作流
+
+当 `EHEN_ENABLED=true` 时，每个 `PackCBZ` 生成的 CBZ 文件会自动：
+
+1. **解析文件名** — 提取 `{gallery_id}_{token}-{file_name}`
+2. **解析元数据**（级联查询）:
+   - DB `eh_page-260604` 精确 URL 匹配
+   - DB `eh_page-260604` gid 模糊匹配
+   - DB `eh_page-260604` title 模糊匹配
+   - n8n webhook 同步查询（带 `gallery_id` + `gallery_token`）
+3. **移动到** `/data/ehen/{category}/{uploader}/{gallery_id}-{file_name}.cbz`
+4. **更新 DB** `eh_gallery-260620` 的 `reader_url` 和 `cover_url`
+5. 文件权限设为 `0666` (rw-rw-rw-)
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `EHEN_ENABLED` | `true` | 是否开启 ehen 自动路由 |
+| `EHEN_DIR` | `/data/ehen` | ehen 目标根目录 |
+| `EHEN_META_WEBHOOK` | `https://n8n.c.gatepro.cn/webhook/search_gallery_by_id_or_filename` | 元数据查询 webhook |
+| `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE` | — | noco21 数据库连接 |
+
+### docker-compose 挂载映射
+
+`PLUS_LOCAL_PATH=/onas/16t4/` → 容器内 `/data/`:
+- `/data/archived/` → `/onas/16t4/archived/` (归档临时目录)
+- `/data/ehen/` → `/onas/16t4/ehen/` (分类库目录)
+
+### 依赖
+
+- `github.com/lib/pq` v1.12.3 — 纯 Go PostgreSQL 驱动，支持 `CGO_ENABLED=0` 编译
+
