@@ -22,10 +22,12 @@ func Init(root, urlPrefix string) {
 }
 
 var spaRoutes = map[string]string{
-	"/or-gallery":   "or-gallery.html",
-	"/img-editor":   "img-editor.html",
+	"/or-gallery": "or-gallery.html",
+	"/reader":     "or-gallery.html",
+	"/gallery":    "or-gallery.html",
+	"/img-editor": "img-editor.html",
 	"/img-sequence": "img-sequence.html",
-	"/":             "index.html",
+	"/":           "index.html",
 }
 
 func Handler() http.Handler {
@@ -49,6 +51,26 @@ func Handler() http.Handler {
 			w.Write(injectBase(data))
 			return
 		}
+
+		// SPA deep-link fallback: serve the SPA HTML for any sub-path under a
+		// known SPA route (e.g. /reader/ehen/Cosplay/file.cbz,
+		// /gallery/ehen/Cosplay/). The front-end parses the gallery path from
+		// location.pathname, so the HTML must be returned for these URLs.
+		for route, spaFile := range spaRoutes {
+			if route != "/" && strings.HasPrefix(p, route+"/") {
+				filePath := filepath.Join(htmlRoot, spaFile)
+				data, err := os.ReadFile(filePath)
+				if err != nil {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", mimeByExt(spaFile))
+				w.Write(injectBase(data))
+				return
+			}
+		}
+
+
 
 		if strings.HasSuffix(p, ".html") {
 			filePath := filepath.Join(htmlRoot, filepath.Clean(strings.TrimPrefix(p, "/")))

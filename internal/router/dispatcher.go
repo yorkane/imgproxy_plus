@@ -75,7 +75,10 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		withAuth(d.cfg, zipfs.Handler(d.cfg)).ServeHTTP(w, r)
 	case strings.HasPrefix(path, "/img/"):
 		withAuth(d.cfg, d.imgHandler).ServeHTTP(w, r)
-	case path == "/or-gallery" || path == "/img-editor" || path == "/img-sequence":
+	case path == "/or-gallery" || strings.HasPrefix(path, "/or-gallery/") ||
+		path == "/reader" || strings.HasPrefix(path, "/reader/") ||
+		path == "/gallery" || strings.HasPrefix(path, "/gallery/") ||
+		path == "/img-editor" || path == "/img-sequence":
 		withAuth(d.cfg, static.Handler()).ServeHTTP(w, r)
 	case path == "/":
 		withAuth(d.cfg, static.Handler()).ServeHTTP(w, r)

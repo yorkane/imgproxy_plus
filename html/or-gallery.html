@@ -1310,31 +1310,83 @@ function fmtDuration(sec) {
 ══════════════════════════════════════════════════ */
 const Router = {
   /**
+   * Build a URL for the current entry (/gallery or /reader) + a path.
+   * Uses path-style deep links so the address bar shows the clean path
+   * instead of an escaped query string. Query params (page, reader) are
+   * appended only when present.
+   */
+  buildUrl(path, opts = {}) {
+    let bp = '';
+    try { bp = new URL(BASE, location.href).pathname; } catch (e) { bp = BASE; }
+    bp = bp.replace(/\/+$/, '');
+    // Keep the entry that brought us here so browsing stays consistent.
+    const entry = (this.getParams().entry === 'reader') ? '/reader' : '/gallery';
+    // File paths (cbz/zip/...) must use a query string: browsers strip the
+    // trailing filename from location.pathname when a <base> tag is present
+    // and the response is HTML, which would lose the file segment.
+    const lastSeg = (path || '').replace(/\/+$/, '').split('/').pop() || '';
+    const isFilePath = /\.(cbz|zip|epub|cbr|rar|7z|pdf|tar|gz|xz)$/i.test(lastSeg);
+    let url;
+    if (isFilePath) {
+      url = bp + entry + '?path=' + encodeURIComponent(path || '/');
+    } else {
+      const clean = (!path || path === '/') ? '' : (path.startsWith('/') ? path : '/' + path);
+      url = bp + entry + clean;
+    }
+    const q = [];
+    if (opts.page && opts.page > 1) q.push('page=' + opts.page);
+    if (opts.reader) q.push('reader=' + encodeURIComponent(opts.reader));
+    if (q.length) url += '?' + q.join('&');
+    return url;
+  },
+
+  /**
    * Parse URL parameters from location.href
    * Supports: path, page, reader
    * Example: /or-gallery?path=/my/dir&page=2&reader=/my/dir/gallery.zip
    */
   getParams() {
-    // CRITICAL: Use location.href to get the full URL including fragment.
-    // Browser decodes %23 to # and treats #... as fragment, which is NOT
-    // included in location.search. We need to manually extract params
-    // from the full URL to preserve # characters in directory names.
-    const fullUrl = location.href;
-    const params = { path: '/', page: 1, reader: null };
+    // Two URL styles are supported:
+    //   1) Path-style entry points (clean, no escaping in the address bar):
+    //        /gallery/<path>   -> open the gallery (directory listing) at <path>
+    //        /reader/<path>    -> open <path> directly in the reader
+    //        /or-gallery       -> legacy, uses ?path= query
+    //      The <path> is everything after the entry segment in location.pathname.
+    //      Query params (page, reader) may still be appended.
+    //   2) Query-style (legacy): /or-gallery?path=/dir&page=2&reader=/dir/file.zip
+    //      Parsed from location.href to preserve # chars in directory names.
+    const params = { path: '/', page: 1, reader: null, entry: 'gallery' };
+    const pn = location.pathname;
 
-    // Extract path
+    // Resolve the URL prefix (BASE, e.g. "/gly") to a host-relative pathname.
+    let bp = '';
+    try { bp = new URL(BASE, location.href).pathname; } catch (e) { bp = BASE; }
+    bp = bp.replace(/\/+$/, '');
+
+    // Detect path-style entry: /reader/<...> or /gallery/<...>
+    for (const seg of ['/reader', '/gallery']) {
+      const prefix = bp + seg;
+      if (pn === prefix || pn === prefix + '/') {
+        params.entry = seg.slice(1); // "reader" or "gallery"
+        params.path = '/';
+      } else if (pn.startsWith(prefix + '/')) {
+        params.entry = seg.slice(1);
+        params.path = pn.slice(prefix.length); // leading slash kept, browser-decoded
+      }
+    }
+
+    // Legacy: ?path= query overrides (used by /or-gallery and any ?path= link).
+    const fullUrl = location.href;
     const pathMatch = fullUrl.match(/[?&]path=([^&]*)/);
     if (pathMatch) {
       params.path = decodeURIComponent(pathMatch[1]);
     }
 
-    // Extract page (gallery page number)
+    // page / reader from query string.
     const pageMatch = fullUrl.match(/[?&]page=(\d+)/);
     if (pageMatch) {
       params.page = parseInt(pageMatch[1], 10) || 1;
     }
-
-    // Extract reader (path to open directly in reader)
     const readerMatch = fullUrl.match(/[?&]reader=([^&]*)/);
     if (readerMatch) {
       params.reader = decodeURIComponent(readerMatch[1]);
@@ -1348,33 +1400,27 @@ const Router = {
   },
 
   push(path, opts = {}) {
-    // opts: { page, reader }
-    let url = location.pathname + '?path=' + encodeURIComponent(path);
-    if (opts.page && opts.page > 1) url += '&page=' + opts.page;
-    if (opts.reader) url += '&reader=' + encodeURIComponent(opts.reader);
+    const url = this.buildUrl(path, opts);
     history.pushState({ path, ...opts }, '', url);
     App.navigate(path, false, opts);
   },
 
   /** Push with a focusName hint — Gallery will restore focus to that card */
   pushWithFocus(path, focusName) {
-    const url = location.pathname + '?path=' + encodeURIComponent(path);
+    const url = this.buildUrl(path);
     history.pushState({ path }, '', url);
     App.navigateToGallery(path, focusName);
   },
 
   replace(path, opts = {}) {
-    let url = location.pathname + '?path=' + encodeURIComponent(path);
-    if (opts.page && opts.page > 1) url += '&page=' + opts.page;
-    if (opts.reader) url += '&reader=' + encodeURIComponent(opts.reader);
+    const url = this.buildUrl(path, opts);
     history.replaceState({ path, ...opts }, '', url);
   },
 
   /** Update current URL with page number (for gallery pagination) */
   updatePage(page) {
     const params = this.getParams();
-    let url = location.pathname + '?path=' + encodeURIComponent(params.path);
-    if (page > 1) url += '&page=' + page;
+    const url = this.buildUrl(params.path, { page });
     history.replaceState({ path: params.path, page }, '', url);
   },
 };
@@ -2580,7 +2626,13 @@ document.addEventListener('alpine:init', () => {
   // makes Reader.open() throw on window._g.isMobile when a path/reader
   // is present in the URL (cold-start into reader/gallery).
   const params = Router.getParams();
-  const start = () => App.navigate(params.path, true, { page: params.page, reader: params.reader });
+  // Entry "/reader/<path>" forces the reader regardless of whether the path
+  // is a file or directory; pass it as the reader target.
+  const startOpts = { page: params.page, reader: params.reader };
+  if (params.entry === 'reader' && params.path && params.path !== '/') {
+    startOpts.reader = startOpts.reader || params.path;
+  }
+  const start = () => App.navigate(params.path, true, startOpts);
   if (window._g) {
     start();
   } else if (window.Alpine && Alpine.nextTick) {
