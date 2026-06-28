@@ -1321,18 +1321,14 @@ const Router = {
     bp = bp.replace(/\/+$/, '');
     // Keep the entry that brought us here so browsing stays consistent.
     const entry = (this.getParams().entry === 'reader') ? '/reader' : '/gallery';
-    // File paths (cbz/zip/...) must use a query string: browsers strip the
-    // trailing filename from location.pathname when a <base> tag is present
-    // and the response is HTML, which would lose the file segment.
-    const lastSeg = (path || '').replace(/\/+$/, '').split('/').pop() || '';
-    const isFilePath = /\.(cbz|zip|epub|cbr|rar|7z|pdf|tar|gz|xz)$/i.test(lastSeg);
-    let url;
-    if (isFilePath) {
-      url = bp + entry + '?path=' + encodeURIComponent(path || '/');
-    } else {
-      const clean = (!path || path === '/') ? '' : (path.startsWith('/') ? path : '/' + path);
-      url = bp + entry + clean;
-    }
+    // Always use path-style URL — even for files like .cbz. Verified that
+    // <base> does NOT strip the trailing filename from location.pathname;
+    // the previous code routed file paths through ?path= query but that
+    // hid the file name from the address bar and made URLs inconsistent
+    // between gallery and reader. Each path segment is URL-encoded so
+    // spaces and other special chars survive a round-trip.
+    const clean = (!path || path === '/') ? '' : (path.startsWith('/') ? path : '/' + path);
+    let url = bp + entry + clean.split('/').map((s, i) => i === 0 ? s : encodeURIComponent(s)).join('/');
     const q = [];
     if (opts.page && opts.page > 1) q.push('page=' + opts.page);
     if (opts.reader) q.push('reader=' + encodeURIComponent(opts.reader));
@@ -1371,7 +1367,17 @@ const Router = {
         params.path = '/';
       } else if (pn.startsWith(prefix + '/')) {
         params.entry = seg.slice(1);
-        params.path = pn.slice(prefix.length); // leading slash kept, browser-decoded
+        // NOTE: location.pathname keeps URL-encoded form (%20 etc.).
+        // We must decodeURIComponent to recover the real path before use,
+        // otherwise encodeFilePath() later will double-encode (%2520) and
+        // the server won't find the file. The legacy ?path= branch below
+        // already decodes — keep this branch in sync.
+        try {
+          params.path = decodeURIComponent(pn.slice(prefix.length));
+        } catch (e) {
+          // Malformed escape sequence — fall back to raw slice.
+          params.path = pn.slice(prefix.length);
+        }
       }
     }
 
@@ -2565,6 +2571,20 @@ const App = {
         const parts = path.replace(/\/$/, '').split('/');
         this._prevPath = parts.slice(0, -1).join('/') || '/';
         this._fromName = parts[parts.length - 1] || null;
+        // If we arrived here from /gallery/ (i.e. clicked a card while
+        // browsing folders), update the URL to /reader/<file> so the
+        // address bar reflects the new view. This is done via replaceState
+        // so the back button still goes to the parent folder.
+        // Switch the URL to /reader/<file> so the address bar reflects the
+        // new view. We construct the URL directly with the reader entry
+        // since Router.replace() would inherit the current /gallery/ entry
+        // from getParams().
+        const bp = (() => {
+          try { return new URL(BASE, location.href).pathname; }
+          catch (e) { return BASE; }
+        })().replace(/\/+$/, '');
+        const readerUrl = bp + '/reader' + path.split('/').map((s, i) => i === 0 ? s : encodeURIComponent(s)).join('/');
+        history.replaceState({ path, page: Router.getParams().page }, '', readerUrl);
       }
       Reader.open(path, true);
     } else {
@@ -2598,7 +2618,17 @@ const App = {
     // Pass the name we came from so Gallery can restore focus
     const fromName = this._fromName;
     this._fromName = null;
-    Router.pushWithFocus(galleryPath, fromName);
+    // Navigate back to the gallery view. We construct the URL directly
+    // with the /gallery/ entry so the address bar reflects the parent
+    // folder regardless of whether we came from /reader/ or /gallery/.
+    const bp = (() => {
+      try { return new URL(BASE, location.href).pathname; }
+      catch (e) { return BASE; }
+    })().replace(/\/+$/, '');
+    const clean = (!galleryPath || galleryPath === '/') ? '' : (galleryPath.startsWith('/') ? galleryPath : '/' + galleryPath);
+    const url = bp + '/gallery' + (clean.endsWith('/') ? clean : (clean + '/'));
+    history.pushState({ path: galleryPath, fromName }, '', url);
+    this.navigateToGallery(galleryPath, fromName);
   },
 
   /** Directly show gallery at path, then focus card named focusName */
